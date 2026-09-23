@@ -104,7 +104,7 @@ internal class OsmLocationProvider(
         }.take(9)
     }
 
-    private val poiCategories = mapOf(
+    private val poiCategories by lazy { mapOf(
         R.string.poi_category_restaurant to listOf("amenity=restaurant"),
         R.string.poi_category_fast_food to listOf("amenity=fast_food"),
         R.string.poi_category_bar to listOf("amenity=bar"),
@@ -211,6 +211,7 @@ internal class OsmLocationProvider(
         ).map { "$it,sport=climbing" },
         R.string.poi_category_hackerspace to listOf("leisure=hackerspace")
     ).mapKeys { context.getString(it.key) }
+    }
 
     private fun delocalizeToQueryableTags(localizedQuery: String): List<String> =
         poiCategories.flatMap { (string, tags) ->

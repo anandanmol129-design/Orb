@@ -10,6 +10,10 @@ import kotlinx.coroutines.withContext
 import org.koin.core.component.KoinComponent
 import org.mariuszgromada.math.mxparser.Expression
 
+private val HexRegex = Regex("0x[0-9a-fA-F]+")
+private val BinRegex = Regex("0b[01]+")
+private val OctRegex = Regex("0[0-7]+")
+
 interface CalculatorRepository {
     fun search(query: String): Flow<Calculator?>
 }
@@ -31,21 +35,21 @@ class CalculatorRepositoryImpl(
 
     private suspend fun queryCalculator(query: String): Calculator? {
         return when {
-            query.matches(Regex("0x[0-9a-fA-F]+")) -> {
+            query.matches(HexRegex) -> {
                 val solution = query.substring(2).toIntOrNull(16) ?: run {
                     return null
                 }
                 Calculator(term = query, solution = solution.toDouble())
             }
 
-            query.matches(Regex("0b[01]+")) -> {
+            query.matches(BinRegex) -> {
                 val solution = query.substring(2).toIntOrNull(2) ?: run {
                     return null
                 }
                 Calculator(term = query, solution = solution.toDouble())
             }
 
-            query.matches(Regex("0[0-7]+")) -> {
+            query.matches(OctRegex) -> {
                 val solution = query.substring(1).toIntOrNull(8) ?: run {
                     return null
                 }

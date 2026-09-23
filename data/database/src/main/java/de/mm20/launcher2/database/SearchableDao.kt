@@ -25,9 +25,6 @@ interface SearchableDao {
     suspend fun upsert(searchable: List<SavedSearchableUpdatePinEntity>)
 
     @Update(entity = SavedSearchableEntity::class)
-    suspend fun update(searchable: SavedSearchableUpdatePinEntity)
-
-    @Update(entity = SavedSearchableEntity::class)
     suspend fun update(searchable: SavedSearchableUpdateContentEntity)
 
     @Query(

@@ -88,6 +88,20 @@
         <activity android:name=".launcher.sheets.BindAndConfigureAppWidgetActivity" />
 
         <activity
+            android:name=".settings.orb.OrbSettingsActivity"
+            android:exported="false"
+            android:label="Orb settings"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+            android:enableOnBackInvokedCallback="true" />
+
+        <activity
+            android:name=".features.orb.OrbFeaturesActivity"
+            android:exported="false"
+            android:label="Orb"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+            android:enableOnBackInvokedCallback="true" />
+
+        <activity
             android:name=".launcher.ImportThemeActivity"
             android:excludeFromRecents="true"
             android:exported="true"

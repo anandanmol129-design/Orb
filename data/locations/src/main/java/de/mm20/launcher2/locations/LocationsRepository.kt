@@ -32,6 +32,8 @@ internal class LocationsRepository(
     private val permissionsManager: PermissionsManager,
 ) : SearchableRepository<Location> {
 
+    private val osmLocationProvider = OsmLocationProvider(context, settings)
+
     @OptIn(FlowPreview::class)
     override fun search(
         query: String,
@@ -60,7 +62,7 @@ internal class LocationsRepository(
 
             val providers = settingsData.providers.map {
                 when (it) {
-                    "openstreetmaps" -> OsmLocationProvider(context, settings)
+                    "openstreetmaps" -> osmLocationProvider
                     else -> PluginLocationProvider(context, it)
                 }
             }

@@ -3,7 +3,6 @@ package de.mm20.launcher2.searchactions.builders
 import android.content.Context
 import de.mm20.launcher2.searchactions.R
 import de.mm20.launcher2.searchactions.TextClassificationResult
-import de.mm20.launcher2.searchactions.actions.MessageAction
 import de.mm20.launcher2.searchactions.actions.OpenUrlAction
 import de.mm20.launcher2.searchactions.actions.SearchAction
 import de.mm20.launcher2.searchactions.actions.SearchActionIcon

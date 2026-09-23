@@ -169,7 +169,12 @@ class MarkdownTransformation(
         color = delimiterColor,
     )
 
+    private var lastInput: AnnotatedString? = null
+    private var lastOutput: TransformedText? = null
+
     override fun filter(text: AnnotatedString): TransformedText {
+        val cached = lastOutput
+        if (cached != null && text == lastInput) return cached
         val tree = parser.buildMarkdownTreeFromString(text.text)
         return TransformedText(
             buildAnnotatedString {
@@ -177,6 +182,9 @@ class MarkdownTransformation(
                 applyStyles(tree, colorScheme, typography, delimiterStyle)
             },
             OffsetMapping.Identity,
-        )
+        ).also {
+            lastInput = text
+            lastOutput = it
+        }
     }
 }

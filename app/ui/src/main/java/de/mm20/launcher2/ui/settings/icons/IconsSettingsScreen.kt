@@ -327,7 +327,7 @@ private fun IconPackSelectorSheet(
             ),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            items(installedIconPacks.size) {
+            items(installedIconPacks.size, key = { installedIconPacks[it].packageName }) {
 
                 val pack = installedIconPacks[it]
 
@@ -455,7 +455,7 @@ fun IconShapePreference(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                     ) {
-                        items(shapes) {
+                        items(shapes, key = { it }) {
                             Column(
                                 modifier = Modifier
                                     .padding(8.dp),

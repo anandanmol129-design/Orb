@@ -1,6 +1,5 @@
 package de.mm20.launcher2.ui.launcher
 
-import android.app.WallpaperManager
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -41,6 +40,7 @@ import de.mm20.launcher2.preferences.GestureAction
 import de.mm20.launcher2.preferences.SearchBarColors
 import de.mm20.launcher2.preferences.SearchBarStyle
 import de.mm20.launcher2.preferences.SystemBarColors
+import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.preferences.WidgetScreenTarget
 import de.mm20.launcher2.search.SavableSearchable
 import de.mm20.launcher2.ui.base.BaseActivity
@@ -53,9 +53,8 @@ import de.mm20.launcher2.ui.launcher.scaffold.ScaffoldAnimation
 import de.mm20.launcher2.ui.launcher.scaffold.ScaffoldConfiguration
 import de.mm20.launcher2.ui.launcher.scaffold.ScaffoldGesture
 import de.mm20.launcher2.ui.launcher.scaffold.SearchBarPosition
-import de.mm20.launcher2.ui.launcher.scaffold.components.ClockAndWidgetsHomeComponent
-import de.mm20.launcher2.ui.launcher.scaffold.components.ClockHomeComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.DismissComponent
+import de.mm20.launcher2.ui.launcher.orb.OrbHomeComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.FeedComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.LaunchComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.LauncherSettingsComponent
@@ -67,6 +66,7 @@ import de.mm20.launcher2.ui.launcher.scaffold.components.ScreenOffComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.SearchComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.SecretComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.WidgetsComponent
+import de.mm20.launcher2.ui.launcher.wallpaper.LauncherWallpaper
 import de.mm20.launcher2.ui.launcher.sheets.LauncherBottomSheetManager
 import de.mm20.launcher2.ui.launcher.sheets.LauncherBottomSheets
 import de.mm20.launcher2.ui.launcher.sheets.LocalBottomSheetManager
@@ -104,8 +104,6 @@ abstract class SharedLauncherActivity(
             pauseTime = savedInstanceState.getLong("pauseTime")
             isNewIntent = savedInstanceState.getBoolean("isNewIntent")
         }
-
-        val wallpaperManager = WallpaperManager.getInstance(this)
 
         val windowSize = Resources.getSystem().displayMetrics.let {
             Size(it.widthPixels.toFloat(), it.heightPixels.toFloat())
@@ -153,6 +151,7 @@ abstract class SharedLauncherActivity(
                         val widgetsOnHomeScreen by viewModel.widgetsOnHomeScreen.collectAsState()
                         val wallpaperBlur by viewModel.wallpaperBlur.collectAsState()
                         val wallpaperBlurRadius by viewModel.wallpaperBlurRadius.collectAsState()
+                        val wallpaperType by viewModel.wallpaperType.collectAsState()
 
                         val fixedRotation by viewModel.fixedRotation.collectAsState()
 
@@ -171,22 +170,6 @@ abstract class SharedLauncherActivity(
                         val darkTheme = LocalDarkTheme.current
                         val darkSearchBar = LocalPreferDarkContentOverWallpaper.current
                                 && searchBarColor == SearchBarColors.Auto || searchBarColor == SearchBarColors.Dark
-
-                        /*LaunchedEffect(dimBackground && darkTheme) {
-                            if (dimBackground && darkTheme) {
-                                val windowAttributes = window.attributes
-                                windowAttributes.flags =
-                                    windowAttributes.flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
-                                window.attributes = windowAttributes
-                                window.setDimAmount(0.3f)
-                            } else {
-                                val windowAttributes = window.attributes
-                                windowAttributes.flags =
-                                    windowAttributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND.inv()
-                                window.attributes = windowAttributes
-                                window.setDimAmount(0f)
-                            }
-                        }*/
 
                         val enterTransitionProgress = remember { mutableStateOf(100f) }
                         var enterTransition by remember {
@@ -226,6 +209,11 @@ abstract class SharedLauncherActivity(
                                 NavBarEffects(modifier = Modifier.fillMaxSize())
                             }
 
+                            LauncherWallpaper(
+                                type = wallpaperType,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+
                             val config = remember(
                                 mode,
                                 reverseSearchResults,
@@ -243,6 +231,7 @@ abstract class SharedLauncherActivity(
                                 searchBarAutofocus,
                                 wallpaperBlur,
                                 wallpaperBlurRadius,
+                                wallpaperType,
                             ) {
                                 if (mode == LauncherActivityMode.Assistant) {
                                     val searchComponent = SearchComponent(
@@ -279,13 +268,23 @@ abstract class SharedLauncherActivity(
                                         searchable: SavableSearchable?,
                                         gesture: Gesture
                                     ): ScaffoldGesture? {
-                                        return when (action) {
+                                            // Orb-internal actions are handled by the sphere itself.
+                                            if (action is GestureAction.OpenPie ||
+                                                action is GestureAction.ToggleSleep ||
+                                                action is GestureAction.ToggleFill ||
+                                                action is GestureAction.NoAction
+                                            ) {
+                                                return null
+                                            }
+                                            return when (action) {
                                             is GestureAction.Search -> ScaffoldGesture(
                                                 component = searchComponent,
                                                 animation = when (gesture) {
                                                     Gesture.SwipeDown -> ScaffoldAnimation.Rubberband
-                                                    Gesture.LongPress -> ScaffoldAnimation.ZoomIn
-                                                    Gesture.DoubleTap -> ScaffoldAnimation.ZoomIn
+                                                    Gesture.LongPress,
+                                                    Gesture.Tap,
+                                                    Gesture.DoubleTap,
+                                                    Gesture.TripleTap -> ScaffoldAnimation.ZoomIn
                                                     else -> ScaffoldAnimation.Push
                                                 },
                                             )
@@ -352,36 +351,22 @@ abstract class SharedLauncherActivity(
                                     val gestures = gestures!!
 
                                     val config = ScaffoldConfiguration(
-                                        homeComponent = if (widgetsOnHomeScreen == true) {
-                                            ClockAndWidgetsHomeComponent
-                                        } else {
-                                            ClockHomeComponent
-                                        },
+                                        homeComponent = OrbHomeComponent,
                                         searchComponent = searchComponent,
-                                        swipeUp = getScaffoldGesture(
-                                            gestures.swipeUpAction,
-                                            gestures.swipeUpApp,
-                                            Gesture.SwipeUp,
-                                        ),
-                                        swipeDown = getScaffoldGesture(
-                                            gestures.swipeDownAction,
-                                            gestures.swipeDownApp,
-                                            Gesture.SwipeDown,
-                                        ),
-                                        swipeLeft = getScaffoldGesture(
-                                            gestures.swipeLeftAction,
-                                            gestures.swipeLeftApp,
-                                            Gesture.SwipeLeft,
-                                        ),
-                                        swipeRight = getScaffoldGesture(
-                                            gestures.swipeRightAction,
-                                            gestures.swipeRightApp,
-                                            Gesture.SwipeRight,
+                                        tap = getScaffoldGesture(
+                                            gestures.tapAction,
+                                            gestures.tapApp,
+                                            Gesture.Tap,
                                         ),
                                         doubleTap = getScaffoldGesture(
                                             gestures.doubleTapAction,
                                             gestures.doubleTapApp,
                                             Gesture.DoubleTap,
+                                        ),
+                                        tripleTap = getScaffoldGesture(
+                                            gestures.tripleTapAction,
+                                            gestures.tripleTapApp,
+                                            Gesture.TripleTap,
                                         ),
                                         longPress = getScaffoldGesture(
                                             gestures.longPressAction,
@@ -403,6 +388,7 @@ abstract class SharedLauncherActivity(
                                         showNavBar = !hideNav,
                                         darkSearchBar = darkSearchBar,
                                         wallpaperBlurRadius = if (wallpaperBlur) wallpaperBlurRadius.dp else 0.dp,
+                                        gesturesEnabled = wallpaperType == WallpaperType.System,
                                     )
 
                                     if (config.isUseless()) config.copy(

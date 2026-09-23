@@ -18,13 +18,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
+
+private val queryTokenRegex = Regex("""([+\-]?[\d+\-e,.]+|[^\d>\-]+)""")
 
 interface UnitConverterRepository {
     fun search(query: String): Flow<UnitConverter?>
@@ -38,6 +43,17 @@ internal class UnitConverterRepositoryImpl(
 ) : UnitConverterRepository, KoinComponent {
 
     private val scope = CoroutineScope(Job() + Dispatchers.Default)
+
+    private val preferredCurrencies: StateFlow<List<String>?> = settings.preferredCurrencies
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
+    private data class CacheKey(
+        val includeCurrencies: Boolean,
+        val preferredCurrencies: List<String>,
+    )
+
+    @Volatile
+    private var cachedConverters: Pair<CacheKey, List<Converter>>? = null
 
     init {
         scope.launch {
@@ -58,6 +74,10 @@ internal class UnitConverterRepositoryImpl(
     }
 
     override suspend fun getAvailableConverters(includeCurrencies: Boolean): List<Converter> {
+        val preferred = preferredCurrencies.value ?: settings.preferredCurrencies.first()
+        val key = CacheKey(includeCurrencies, preferred)
+        cachedConverters?.let { if (it.first == key) return it.second }
+
         val converters = mutableListOf(
             MassConverter(context),
             LengthConverter(context),
@@ -68,8 +88,9 @@ internal class UnitConverterRepositoryImpl(
             TemperatureConverter(context),
             VolumeConverter(context),
         )
-        if (includeCurrencies) converters.add(CurrencyConverter(currencyRepository, settings.preferredCurrencies.first()))
+        if (includeCurrencies) converters.add(CurrencyConverter(currencyRepository, preferred))
 
+        cachedConverters = key to converters
         return converters
     }
 
@@ -77,9 +98,7 @@ internal class UnitConverterRepositoryImpl(
         query: String,
         includeCurrencies: Boolean
     ): UnitConverter? {
-        val regex = Regex("""([+\-]?[\d+\-e,.]+|[^\d>\-]+)""")
-
-        val matches = regex.findAll(query)
+        val matches = queryTokenRegex.findAll(query)
 
         var inputStr: String? = null
         var inputValue: Double? = null

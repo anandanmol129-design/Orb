@@ -33,16 +33,4 @@ class DebugInformationDumper {
         return file.absolutePath
     }
 
-    suspend fun exportDatabases(context: Context): String {
-        val df = SimpleDateFormat("yyyy-MM-dd-HHmmss")
-        val exportFile = File(
-            context.getExternalFilesDir(null),
-            "room-${df.format(Date(System.currentTimeMillis()))}.db"
-        )
-        withContext(Dispatchers.IO) {
-            context.getDatabasePath("room").copyTo(exportFile)
-        }
-        return exportFile.absolutePath
-    }
-
 }

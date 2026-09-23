@@ -6,7 +6,6 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
-import android.graphics.Rect
 import androidx.core.graphics.withScale
 import de.mm20.launcher2.ktx.drawWithColorFilter
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +14,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import palettes.TonalPalette
 import java.lang.ref.WeakReference
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface LauncherIcon
 
@@ -34,6 +34,12 @@ data class StaticLauncherIcon(
     private var cachedRenderSettings: LauncherIconRenderSettings? = null
     private var renderSemaphore = Semaphore(1)
 
+    // Reused across renders; only accessed inside [renderSemaphore].
+    private val clearPaint = Paint().apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    }
+    private val layerPaint = Paint()
+
     fun getCachedBitmap(settings: LauncherIconRenderSettings): Bitmap? {
         return if (cachedRenderSettings == settings) cachedBitmap?.get() else null
     }
@@ -52,9 +58,8 @@ data class StaticLauncherIcon(
                     } else cachedBmp
                 val canvas = Canvas(bmp)
                 canvas.drawRect(
-                    Rect(0, 0, canvas.width, canvas.height), Paint().apply {
-                        xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-                    })
+                    0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), clearPaint
+                )
                 renderLayer(canvas, backgroundLayer, settings.bgThemeColor, settings.bgTone)
                 renderLayer(canvas, foregroundLayer, settings.fgThemeColor, settings.fgTone)
                 cachedBitmap = WeakReference(bmp)
@@ -68,9 +73,11 @@ data class StaticLauncherIcon(
     private fun renderLayer(canvas: Canvas, layer: LauncherIconLayer, themeColor: Int, tone: Int) {
         when(layer) {
             is ColorLayer -> {
-                val paint = Paint()
-                paint.color = if (layer.color == 0) themeColor else getTone(layer.color, tone)
-                canvas.drawRect(Rect(0, 0, canvas.width, canvas.height), paint)
+                layerPaint.color =
+                    if (layer.color == 0) themeColor else getTone(layer.color, tone)
+                canvas.drawRect(
+                    0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), layerPaint
+                )
             }
             is StaticIconLayer -> {
                 canvas.withScale(
@@ -79,7 +86,7 @@ data class StaticLauncherIcon(
                     canvas.width / 2f,
                     canvas.height / 2f,
                 ) {
-                    layer.icon.bounds = Rect(0, 0, canvas.width, canvas.height)
+                    layer.icon.setBounds(0, 0, canvas.width, canvas.height)
                     layer.icon.draw(canvas)
                 }
             }
@@ -91,7 +98,7 @@ data class StaticLauncherIcon(
                     canvas.width / 2f,
                     canvas.height / 2f,
                 ) {
-                    layer.icon.bounds = Rect(0, 0, canvas.width, canvas.height)
+                    layer.icon.setBounds(0, 0, canvas.width, canvas.height)
                     layer.icon.drawWithColorFilter(canvas,
                         PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
                     )
@@ -102,9 +109,17 @@ data class StaticLauncherIcon(
     }
 
     private fun getTone(argb: Int, tone: Int): Int {
-        return TonalPalette
-            .fromInt(argb)
-            .tone(tone)
+        val key = (argb.toLong() shl 32) or (tone.toLong() and 0xffffffffL)
+        return toneCache.getOrPut(key) {
+            TonalPalette
+                .fromInt(argb)
+                .tone(tone)
+        }
+    }
+
+    private companion object {
+        // TonalPalette's HCT solve is deterministic per (color, tone); cache the resulting color.
+        val toneCache = ConcurrentHashMap<Long, Int>()
     }
 }
 

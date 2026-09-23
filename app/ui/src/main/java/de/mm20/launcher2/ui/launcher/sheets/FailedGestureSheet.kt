@@ -44,15 +44,16 @@ fun FailedGestureSheet(
             is GestureAction.QuickSettings -> R.string.gesture_action_quick_settings
             is GestureAction.Recents -> R.string.gesture_action_recents
             is GestureAction.PowerMenu -> R.string.gesture_action_power_menu
+            is GestureAction.OpenPie -> R.string.gesture_action_open_pie
+            is GestureAction.ToggleSleep -> R.string.gesture_action_toggle_sleep
+            is GestureAction.ToggleFill -> R.string.gesture_action_toggle_fill
             else -> R.string.gesture_action_none
         })
-        val gestureName = stringResource(when(it.gesture) {
+        val gestureName = stringResource(when (it.gesture) {
+            Gesture.Tap -> R.string.preference_gesture_tap
             Gesture.DoubleTap -> R.string.preference_gesture_double_tap
+            Gesture.TripleTap -> R.string.preference_gesture_triple_tap
             Gesture.LongPress -> R.string.preference_gesture_long_press
-            Gesture.SwipeDown -> R.string.preference_gesture_swipe_down
-            Gesture.SwipeLeft -> R.string.preference_gesture_swipe_left
-            Gesture.SwipeRight -> R.string.preference_gesture_swipe_right
-            Gesture.SwipeUp -> R.string.preference_gesture_swipe_up
             Gesture.HomeButton -> R.string.preference_gesture_home_button
             else -> throw IllegalArgumentException("Unknown gesture: ${it.gesture}")
         })

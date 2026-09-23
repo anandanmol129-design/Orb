@@ -63,7 +63,7 @@ fun CalendarProviderSettingsScreen(providerId: String) {
                 )
             }
         }
-        items(calendarLists.toList()) { (k, v) ->
+        items(calendarLists.toList(), key = { (k, _) -> k }) { (k, v) ->
             PreferenceCategory(
                 title = k,
             ) {

@@ -80,7 +80,10 @@ fun AppShortcutsSettingsScreen() {
                 }
             }
         }
-        itemsIndexed(apps) { index, app ->
+        itemsIndexed(
+            apps,
+            key = { _, app -> "${app.componentName.packageName}:${app.user.getSerialNumber(context)}" }
+        ) { index, app ->
             val key = "${app.componentName.packageName}:${app.user.getSerialNumber(context)}"
             Box(
                 modifier = Modifier.clip(

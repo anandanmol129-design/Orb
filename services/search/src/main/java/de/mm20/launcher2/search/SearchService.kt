@@ -346,6 +346,7 @@ fun SearchResults.toList(): List<Searchable> {
         unitConverters,
         websites,
         wikipedia,
+        locations,
         searchActions,
     ).flatten()
 }

@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import org.koin.core.component.KoinComponent
 
 interface BadgeService {
     fun getBadge(searchable: Searchable): Flow<Badge?>
@@ -33,7 +32,7 @@ interface BadgeService {
 internal class BadgeServiceImpl(
     private val context: Context,
     private val settings: BadgeSettings,
-) : BadgeService, KoinComponent {
+) : BadgeService {
 
     private val scope = CoroutineScope(Job() + Dispatchers.Default)
     private val badgeProviders = MutableStateFlow<List<BadgeProvider>>(emptyList())

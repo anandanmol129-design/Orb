@@ -238,20 +238,22 @@ fun LocaleSettingsScreen() {
                 )
                 Preference(
                     title = stringResource(R.string.preference_currencies),
-                    summary = currencies?.let {
-                        if (it.isEmpty()) {
+                    summary = currencies?.let { currencyCodes ->
+                        if (currencyCodes.isEmpty()) {
                             return@let stringResource(R.string.preference_value_system_default)
                         }
 
-                        val names = it.map {
-                            try {
-                                Currency.getInstance(it).displayName
-                            } catch (e: IllegalArgumentException) {
-                                it
+                        remember(currencyCodes) {
+                            val names = currencyCodes.map {
+                                try {
+                                    Currency.getInstance(it).displayName
+                                } catch (e: IllegalArgumentException) {
+                                    it
+                                }
                             }
-                        }
 
-                        ListFormatter.getInstance().format(names)
+                            ListFormatter.getInstance().format(names)
+                        }
                     },
                     icon = R.drawable.toll_24px,
                     onClick = {

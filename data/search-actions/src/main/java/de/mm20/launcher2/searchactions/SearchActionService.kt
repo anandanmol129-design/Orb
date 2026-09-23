@@ -58,6 +58,9 @@ internal class SearchActionServiceImpl(
     private val repository: SearchActionRepository,
     private val textClassifier: TextClassifier,
 ) : SearchActionService {
+
+    private val httpClient by lazy { HttpClient() }
+
     override suspend fun search(
         query: String
     ): Flow<ImmutableList<SearchAction>> {
@@ -141,7 +144,6 @@ internal class SearchActionServiceImpl(
         iconSize: Int
     ): CustomWebsearchActionBuilder? {
         try {
-            val httpClient = HttpClient()
             val response = httpClient.get {
                 url(openSearchHref)
             }

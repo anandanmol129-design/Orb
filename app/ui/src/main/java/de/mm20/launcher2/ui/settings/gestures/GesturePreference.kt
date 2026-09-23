@@ -157,6 +157,39 @@ internal fun GesturePreference(
                                     }
                                 )
                             }
+                            if (options.contains(GestureAction.OpenPie::class)) {
+                                GestureItem(
+                                    title = stringResource(R.string.gesture_action_open_pie),
+                                    icon = R.drawable.apps_24px,
+                                    selected = value is GestureAction.OpenPie,
+                                    onClick = {
+                                        onValueChanged(GestureAction.OpenPie, null)
+                                        showSheet = false
+                                    }
+                                )
+                            }
+                            if (options.contains(GestureAction.ToggleSleep::class)) {
+                                GestureItem(
+                                    title = stringResource(R.string.gesture_action_toggle_sleep),
+                                    icon = R.drawable.visibility_off_24px,
+                                    selected = value is GestureAction.ToggleSleep,
+                                    onClick = {
+                                        onValueChanged(GestureAction.ToggleSleep, null)
+                                        showSheet = false
+                                    }
+                                )
+                            }
+                            if (options.contains(GestureAction.ToggleFill::class)) {
+                                GestureItem(
+                                    title = stringResource(R.string.gesture_action_toggle_fill),
+                                    icon = R.drawable.circle_24px,
+                                    selected = value is GestureAction.ToggleFill,
+                                    onClick = {
+                                        onValueChanged(GestureAction.ToggleFill, null)
+                                        showSheet = false
+                                    }
+                                )
+                            }
                             if (options.contains(GestureAction.Feed::class)) {
                                 GestureItem(
                                     title = stringResource(R.string.gesture_action_feed),
@@ -188,9 +221,12 @@ internal fun GesturePreference(
                                         summary = if (widget.widgets.isEmpty()) {
                                             stringResource(R.string.gesture_action_widgets_empty)
                                         } else {
-                                            ListFormatter.getInstance().format(
-                                                widget.widgets.map { it.getLabel(LocalContext.current) }
-                                            )
+                                            val context = LocalContext.current
+                                            remember(widget.widgets) {
+                                                ListFormatter.getInstance().format(
+                                                    widget.widgets.map { it.getLabel(context) }
+                                                )
+                                            }
                                         }
                                     )
                                 }
@@ -411,6 +447,9 @@ private fun getActionLabel(
         GestureAction.Recents -> resources.getString(R.string.gesture_action_recents)
         GestureAction.ScreenLock -> resources.getString(R.string.gesture_action_lock_screen)
         GestureAction.Search -> resources.getString(R.string.gesture_action_open_search)
+        GestureAction.OpenPie -> resources.getString(R.string.gesture_action_open_pie)
+        GestureAction.ToggleSleep -> resources.getString(R.string.gesture_action_toggle_sleep)
+        GestureAction.ToggleFill -> resources.getString(R.string.gesture_action_toggle_fill)
         GestureAction.LauncherSettings -> resources.getString(R.string.settings)
         is GestureAction.Widgets -> {
             when (action.target) {

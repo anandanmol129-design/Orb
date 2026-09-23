@@ -11,7 +11,7 @@ import java.util.UUID
 @Serializable
 @ConsistentCopyVisibility
 data class LauncherSettingsData internal constructor(
-    val schemaVersion: Int = 6,
+    val schemaVersion: Int = 8,
 
     val uiColorScheme: ColorScheme = ColorScheme.System,
     @Serializable(with = UUIDSerializer::class)
@@ -31,6 +31,7 @@ data class LauncherSettingsData internal constructor(
     val wallpaperDim: Boolean = false,
     val wallpaperBlur: Boolean = true,
     val wallpaperBlurRadius: Int = 32,
+    val wallpaperType: WallpaperType = WallpaperType.System,
 
     val mediaAllowList: Set<String> = emptySet(),
     val mediaDenyList: Set<String> = emptySet(),
@@ -151,12 +152,10 @@ data class LauncherSettingsData internal constructor(
     val widgetsEditButton: Boolean = true,
     val widgetScreenCount: Int = 1,
 
-    val gesturesSwipeDown: GestureAction = GestureAction.Search,
-    val gesturesSwipeLeft: GestureAction = GestureAction.NoAction,
-    val gesturesSwipeRight: GestureAction = GestureAction.NoAction,
-    val gesturesSwipeUp: GestureAction = GestureAction.Widgets(),
-    val gesturesDoubleTap: GestureAction = GestureAction.ScreenLock,
-    val gesturesLongPress: GestureAction = GestureAction.NoAction,
+    val gesturesTap: GestureAction = GestureAction.Search,
+    val gesturesDoubleTap: GestureAction = GestureAction.NoAction,
+    val gesturesTripleTap: GestureAction = GestureAction.ToggleFill,
+    val gesturesLongPress: GestureAction = GestureAction.OpenPie,
     val gesturesHomeButton: GestureAction = GestureAction.NoAction,
 
     val animationsCharging: Boolean = true,
@@ -357,6 +356,17 @@ enum class SystemBarColors {
 }
 
 @Serializable
+enum class WallpaperType {
+    System,
+    Water,
+    Prism,
+    SolarSystem,
+    Boids,
+    Mandelbrot,
+    DoublePendulum,
+}
+
+@Serializable
 enum class SurfaceShape {
     Rounded,
     Cut,
@@ -421,6 +431,18 @@ sealed interface GestureAction {
     @Serializable
     @SerialName("launcher_settings")
     data object LauncherSettings : GestureAction
+
+    @Serializable
+    @SerialName("open_pie")
+    data object OpenPie : GestureAction
+
+    @Serializable
+    @SerialName("toggle_sleep")
+    data object ToggleSleep : GestureAction
+
+    @Serializable
+    @SerialName("toggle_fill")
+    data object ToggleFill : GestureAction
 }
 
 

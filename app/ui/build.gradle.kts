@@ -26,12 +26,6 @@ android {
     }
 
     buildTypes {
-        release {
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
         create("nightly") {
             initWith(getByName("release"))
             matchingFallbacks += "release"
@@ -115,6 +109,8 @@ dependencies {
     implementation(project(":libs:material-color-utilities"))
 
     implementation(project(":core:base"))
+    implementation(project(":core:agent"))
+    implementation(project(":data:orb"))
     implementation(project(":core:i18n"))
     implementation(project(":core:compat"))
     implementation(project(":core:ktx"))
@@ -151,6 +147,7 @@ dependencies {
     implementation(project(":services:global-actions"))
     implementation(project(":services:widgets"))
     implementation(project(":services:favorites"))
+    implementation(project(":services:voice"))
     implementation(project(":services:feed"))
     implementation(project(":core:devicepose"))
 }

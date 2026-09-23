@@ -8,6 +8,7 @@ import de.mm20.launcher2.preferences.ScreenOrientation
 import de.mm20.launcher2.preferences.SearchBarColors
 import de.mm20.launcher2.preferences.SearchBarStyle
 import de.mm20.launcher2.preferences.SystemBarColors
+import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.preferences.WidgetScreenTarget
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -31,11 +32,12 @@ class UiSettings internal constructor(
 ) {
     val favoritesEnabled
         get() = launcherDataStore.data.map { it.favoritesEnabled || it.homeScreenDock }
+            .distinctUntilChanged()
 
     val iconShape
         get() = launcherDataStore.data.map {
             it.iconsShape
-        }
+        }.distinctUntilChanged()
 
     fun setIconShape(iconShape: IconShape) {
         launcherDataStore.update {
@@ -52,7 +54,7 @@ class UiSettings internal constructor(
                 iconSize = it.gridIconSize,
                 columnCount = it.gridColumnCount,
             )
-        }
+        }.distinctUntilChanged()
 
     fun setGridColumnCount(columnCount: Int) {
         launcherDataStore.update {
@@ -90,7 +92,7 @@ class UiSettings internal constructor(
                 opacity = it.surfacesOpacity,
                 borderWidth = it.surfacesBorderWidth,
             )
-        }
+        }.distinctUntilChanged()
 
     fun setCardOpacity(opacity: Float) {
         launcherDataStore.update {
@@ -107,7 +109,7 @@ class UiSettings internal constructor(
     val dimWallpaper
         get() = launcherDataStore.data.map {
             it.wallpaperDim
-        }
+        }.distinctUntilChanged()
 
     fun setDimWallpaper(dimWallpaper: Boolean) {
         launcherDataStore.update {
@@ -134,6 +136,17 @@ class UiSettings internal constructor(
     fun setWallpaperBlurRadius(wallpaperBlurRadius: Int) {
         launcherDataStore.update {
             it.copy(wallpaperBlurRadius = wallpaperBlurRadius)
+        }
+    }
+
+    val wallpaperType
+        get() = launcherDataStore.data.map {
+            it.wallpaperType
+        }.distinctUntilChanged()
+
+    fun setWallpaperType(wallpaperType: WallpaperType) {
+        launcherDataStore.update {
+            it.copy(wallpaperType = wallpaperType)
         }
     }
 

@@ -1,9 +1,16 @@
 package de.mm20.launcher2.database.entities
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "Icons")
+@Entity(
+    tableName = "Icons",
+    indices = [
+        Index(value = ["packageName", "activityName", "iconPack"]),
+        Index(value = ["drawable", "iconPack"]),
+    ],
+)
 data class IconEntity(
         val type: String,
         val packageName: String? = null,

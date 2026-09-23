@@ -28,7 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -62,13 +62,14 @@ fun SearchablePicker(
             DockedSearchBar(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .drawBehind {
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                0.5f to colorSurface,
-                                0.5f to colorSurface.copy(alpha = 0f),
-                            )
+                    .drawWithCache {
+                        val brush = Brush.verticalGradient(
+                            0.5f to colorSurface,
+                            0.5f to colorSurface.copy(alpha = 0f),
                         )
+                        onDrawBehind {
+                            drawRect(brush = brush)
+                        }
                     }
                     .padding(bottom = 16.dp),
                 expanded = false,
@@ -107,7 +108,7 @@ fun SearchablePicker(
             ) {
             }
         }
-        itemsIndexed(viewModel.items) { i, it ->
+        itemsIndexed(viewModel.items, key = { _, it -> it.key }) { i, it ->
             val iconSize = 32.dp.toPixels()
             val icon by remember(it.key) {
                 viewModel.getIcon(

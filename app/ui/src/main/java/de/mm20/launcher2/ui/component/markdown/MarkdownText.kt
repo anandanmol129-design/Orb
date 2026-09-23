@@ -2,7 +2,6 @@ package de.mm20.launcher2.ui.component.markdown
 
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -330,11 +329,4 @@ fun CheckboxNode(node: ASTNode, text: String, onTextChange: (String) -> Unit = {
             .padding(top = 4.dp, bottom = 4.dp, end = 8.dp, start = 6.dp)
             .requiredSize(18.dp)
     )
-}
-
-private fun ASTNode.print(indent: Int = 0) {
-    Log.d("MM20", "${" ".repeat(indent)}${this.type}")
-    for (child in this.children) {
-        child.print(indent + 2)
-    }
 }

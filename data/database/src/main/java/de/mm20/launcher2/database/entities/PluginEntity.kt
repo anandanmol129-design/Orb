@@ -11,6 +11,5 @@ data class PluginEntity(
     val packageName: String,
     val className: String,
     val type: String,
-    val settingsActivity: String?,
     val enabled: Boolean,
 )

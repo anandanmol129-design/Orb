@@ -18,8 +18,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,14 +41,6 @@ interface SavableSearchableRepository : Backupable {
     )
 
     fun upsert(
-        searchable: SavableSearchable,
-        visibility: VisibilityLevel? = null,
-        pinned: Boolean? = null,
-        launchCount: Int? = null,
-        weight: Double? = null,
-    )
-
-    fun update(
         searchable: SavableSearchable,
         visibility: VisibilityLevel? = null,
         pinned: Boolean? = null,
@@ -184,30 +178,6 @@ internal class SavableSearchableRepositoryImpl(
         }
     }
 
-    override fun update(
-        searchable: SavableSearchable,
-        visibility: VisibilityLevel?,
-        pinned: Boolean?,
-        launchCount: Int?,
-        weight: Double?
-    ) {
-        val dao = database.searchableDao()
-        scope.launch {
-            val entity = dao.getByKey(searchable.key).firstOrNull()
-            dao.upsert(
-                SavedSearchableEntity(
-                    key = searchable.key,
-                    type = searchable.domain,
-                    visibility = visibility?.value ?: entity?.visibility ?: 0,
-                    pinPosition = pinned?.let { if (it) 1 else 0 } ?: entity?.pinPosition ?: 0,
-                    launchCount = launchCount ?: entity?.launchCount ?: 0,
-                    weight = weight ?: entity?.weight ?: 0.0,
-                    serializedSearchable = searchable.serialize() ?: return@launch,
-                )
-            )
-        }
-    }
-
     override fun touch(searchable: SavableSearchable) {
         scope.launch {
             val weightFactor =
@@ -271,9 +241,11 @@ internal class SavableSearchableRepositoryImpl(
             else -> throw IllegalArgumentException("Cannot specify both includeTypes and excludeTypes")
         }
 
-        return entities.map {
-            it.mapNotNull { fromDatabaseEntity(it).searchable }
-        }
+        return entities.distinctUntilChanged()
+            .map {
+                it.mapNotNull { fromDatabaseEntity(it).searchable }
+            }
+            .flowOn(Dispatchers.IO)
     }
 
     override fun getKeys(
@@ -434,15 +406,19 @@ internal class SavableSearchableRepositoryImpl(
         if (keys.size > 999) {
             return combine(keys.chunked(999).map {
                 dao.getByKeys(it)
+                    .distinctUntilChanged()
                     .map {
                         it.mapNotNull { fromDatabaseEntity(it).searchable }
                     }
+                    .flowOn(Dispatchers.IO)
             }) { results ->
                 results.flatMap { it }
             }
         }
         return dao.getByKeys(keys)
+            .distinctUntilChanged()
             .map { it.mapNotNull { fromDatabaseEntity(it).searchable } }
+            .flowOn(Dispatchers.IO)
     }
 
     override suspend fun backup(toDir: File) = withContext(Dispatchers.IO) {

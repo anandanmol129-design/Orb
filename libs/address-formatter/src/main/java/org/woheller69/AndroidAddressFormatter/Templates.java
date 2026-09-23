@@ -25,7 +25,7 @@ enum Templates {
     this.data = setData(fileName);
   }
 
-  synchronized public JsonNode getData() {
+  public JsonNode getData() {
     return this.data;
   }
 

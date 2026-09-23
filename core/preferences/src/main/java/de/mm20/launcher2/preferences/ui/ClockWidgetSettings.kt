@@ -1,7 +1,6 @@
 package de.mm20.launcher2.preferences.ui
 
 import de.mm20.launcher2.preferences.BatteryStatusVisibility
-import de.mm20.launcher2.preferences.ClockWidgetAlignment
 import de.mm20.launcher2.preferences.ClockWidgetColors
 import de.mm20.launcher2.preferences.ClockWidgetStyle
 import de.mm20.launcher2.preferences.ClockWidgetStyleEnum
@@ -22,7 +21,7 @@ class ClockWidgetSettings internal constructor(
     private val launcherDataStore: LauncherDataStore,
 ) {
     val compact
-        get() = launcherDataStore.data.map { it.clockWidgetCompact }
+        get() = launcherDataStore.data.map { it.clockWidgetCompact }.distinctUntilChanged()
 
     fun setCompact(compact: Boolean) {
         launcherDataStore.update {
@@ -64,26 +63,8 @@ class ClockWidgetSettings internal constructor(
         }
     }
 
-    val fillHeight
-        get() = launcherDataStore.data.map { it.clockWidgetFillHeight || !it.homeScreenWidgets }
-
-    fun setFillHeight(fillHeight: Boolean) {
-        launcherDataStore.update {
-            it.copy(clockWidgetFillHeight = fillHeight)
-        }
-    }
-
     val dock
-        get() = launcherDataStore.data.map { it.homeScreenDock }
-
-    val alignment
-        get() = launcherDataStore.data.map { it.clockWidgetAlignment }
-
-    fun setAlignment(alignment: ClockWidgetAlignment) {
-        launcherDataStore.update {
-            it.copy(clockWidgetAlignment = alignment)
-        }
-    }
+        get() = launcherDataStore.data.map { it.homeScreenDock }.distinctUntilChanged()
 
     val clockStyle: Flow<ClockWidgetStyle>
         get() = launcherDataStore.data.map {
@@ -97,16 +78,16 @@ class ClockWidgetSettings internal constructor(
                 ClockWidgetStyleEnum.Empty -> ClockWidgetStyle.Empty
                 ClockWidgetStyleEnum.Custom -> it.clockWidgetCustom
             }
-        }
+        }.distinctUntilChanged()
 
     val digital1: Flow<ClockWidgetStyle.Digital1>
-        get() = launcherDataStore.data.map { it.clockWidgetDigital1 }
+        get() = launcherDataStore.data.map { it.clockWidgetDigital1 }.distinctUntilChanged()
 
     val analog: Flow<ClockWidgetStyle.Analog>
-        get() = launcherDataStore.data.map { it.clockWidgetAnalog }
+        get() = launcherDataStore.data.map { it.clockWidgetAnalog }.distinctUntilChanged()
 
     val custom: Flow<ClockWidgetStyle.Custom>
-        get() = launcherDataStore.data.map { it.clockWidgetCustom }
+        get() = launcherDataStore.data.map { it.clockWidgetCustom }.distinctUntilChanged()
 
     fun setClockStyle(clockStyle: ClockWidgetStyle) {
         launcherDataStore.update {
@@ -120,7 +101,7 @@ class ClockWidgetSettings internal constructor(
     }
 
     val color
-        get() = launcherDataStore.data.map { it.clockWidgetColors }
+        get() = launcherDataStore.data.map { it.clockWidgetColors }.distinctUntilChanged()
 
     fun setColor(color: ClockWidgetColors) {
         launcherDataStore.update {
@@ -129,7 +110,7 @@ class ClockWidgetSettings internal constructor(
     }
 
     val showSeconds
-        get() = launcherDataStore.data.map { it.clockWidgetShowSeconds }
+        get() = launcherDataStore.data.map { it.clockWidgetShowSeconds }.distinctUntilChanged()
 
     fun setShowSeconds(enabled: Boolean) {
         launcherDataStore.update {
@@ -138,7 +119,7 @@ class ClockWidgetSettings internal constructor(
     }
 
     val monospaced
-        get() = launcherDataStore.data.map { it.clockWidgetMonospaced }
+        get() = launcherDataStore.data.map { it.clockWidgetMonospaced }.distinctUntilChanged()
 
     fun setMonospaced(enabled: Boolean) {
         launcherDataStore.update {
@@ -147,7 +128,7 @@ class ClockWidgetSettings internal constructor(
     }
 
     val useThemeColor
-        get() = launcherDataStore.data.map { it.clockWidgetUseThemeColor }
+        get() = launcherDataStore.data.map { it.clockWidgetUseThemeColor }.distinctUntilChanged()
 
     fun setUseThemeColor(enabled: Boolean) {
         launcherDataStore.update {
@@ -156,7 +137,7 @@ class ClockWidgetSettings internal constructor(
     }
 
     val useSmartspacer
-        get() = launcherDataStore.data.map { it.clockWidgetSmartspacer }
+        get() = launcherDataStore.data.map { it.clockWidgetSmartspacer }.distinctUntilChanged()
 
     fun setUseSmartspacer(enabled: Boolean) {
         launcherDataStore.update {

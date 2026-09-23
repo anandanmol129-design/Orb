@@ -1,0 +1,64 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.plugin.serialization)
+}
+
+android {
+    compileSdk {
+        version = release(libs.versions.compileSdk.get().toInt()) {
+            minorApiLevel = libs.versions.compileSdkMinor.get().toInt()
+        }
+    }
+
+    defaultConfig {
+        minSdk = libs.versions.minSdk.get().toInt()
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
+    }
+
+    buildTypes {
+        release {
+            proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
+            )
+        }
+        create("nightly") {
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
+    namespace = "de.mm20.launcher2.orb"
+}
+
+dependencies {
+    implementation(libs.bundles.kotlin)
+    implementation(libs.androidx.core)
+    implementation(libs.androidx.appcompat)
+
+    api(libs.androidx.roomruntime)
+    ksp(libs.androidx.roomcompiler)
+    api(libs.androidx.room)
+
+    implementation(libs.koin.android)
+
+    implementation(project(":core:agent"))
+    implementation(project(":core:ktx"))
+
+    testImplementation(libs.bundles.tests)
+}

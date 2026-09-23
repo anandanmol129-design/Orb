@@ -8,6 +8,3 @@ fun String.decodeUrl(charset: String): String? {
 
 fun String.stripStartOrNull(s: String): String?
     = if (startsWith(s)) removePrefix(s) else null
-
-fun String.stripEndOrNull(s: String): String?
-    = if (endsWith(s)) removeSuffix(s) else null

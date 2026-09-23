@@ -7,6 +7,12 @@ import de.mm20.launcher2.icons.LauncherIcon
 import de.mm20.launcher2.icons.StaticLauncherIcon
 import java.text.Collator
 
+// Collator is not thread-safe, so each thread gets its own instance. The settings match the
+// previous per-comparison Collator.getInstance().apply { strength = Collator.SECONDARY }.
+private val labelCollator = ThreadLocal.withInitial {
+    Collator.getInstance().apply { strength = Collator.SECONDARY }
+}
+
 interface SavableSearchable : Searchable, Comparable<SavableSearchable>  {
     val key: String
 
@@ -36,8 +42,7 @@ interface SavableSearchable : Searchable, Comparable<SavableSearchable>  {
     override fun compareTo(other: SavableSearchable): Int {
         val label1 = labelOverride ?: label
         val label2 = other.labelOverride ?: other.label
-        return Collator.getInstance().apply { strength = Collator.SECONDARY }
-            .compare(label1, label2)
+        return labelCollator.get().compare(label1, label2)
     }
 
     val domain: String

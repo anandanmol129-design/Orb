@@ -10,6 +10,9 @@ import de.mm20.launcher2.widgets.CalendarWidget
 import de.mm20.launcher2.widgets.AppsWidget
 import de.mm20.launcher2.widgets.MusicWidget
 import de.mm20.launcher2.widgets.NotesWidget
+import de.mm20.launcher2.widgets.OrbBoardWidget
+import de.mm20.launcher2.widgets.OrbCalendarWidget
+import de.mm20.launcher2.widgets.OrbTrackerWidget
 import de.mm20.launcher2.widgets.WeatherWidget
 import de.mm20.launcher2.widgets.Widget
 import de.mm20.launcher2.widgets.WidgetRepository
@@ -48,7 +51,7 @@ class WidgetsService(
         return flowOf(getBuiltInWidgets())
     }
 
-    fun getBuiltInWidgets(): List<BuiltInWidgetInfo> {
+    private fun getBuiltInWidgets(): List<BuiltInWidgetInfo> {
         return listOf(
             BuiltInWidgetInfo(
                 type = WeatherWidget.Type,
@@ -69,6 +72,18 @@ class WidgetsService(
             BuiltInWidgetInfo(
                 type = NotesWidget.Type,
                 label = context.getString(R.string.widget_name_notes),
+            ),
+            BuiltInWidgetInfo(
+                type = OrbCalendarWidget.Type,
+                label = context.getString(R.string.widget_name_orb_calendar),
+            ),
+            BuiltInWidgetInfo(
+                type = OrbBoardWidget.Type,
+                label = context.getString(R.string.widget_name_orb_board),
+            ),
+            BuiltInWidgetInfo(
+                type = OrbTrackerWidget.Type,
+                label = context.getString(R.string.widget_name_orb_tracker),
             ),
         )
     }

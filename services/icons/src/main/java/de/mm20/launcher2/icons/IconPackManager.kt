@@ -55,25 +55,28 @@ class IconPackManager(
     suspend fun updateIconPacks(forceReinstall: Boolean = false): Boolean {
         var iconsHaveBeenUpdated = false
         updateIconPacksMutex.lock()
-        val installers = listOf(
-            AppFilterIconPackInstaller(context, appDatabase),
-            GrayscaleMapIconPackInstaller(context, appDatabase),
-        )
-        val installedPacks = mutableListOf<IconPack>()
-        for (installer in installers) {
-            val iconPacks = installer.getInstalledIconPacks()
-            for (pack in iconPacks) {
-                if (forceReinstall || !installer.isInstalledAndUpToDate(pack)) {
-                    installer.install(pack)
-                    iconsHaveBeenUpdated = true
-                } else {
-                    Log.d("MM20", "Icon pack ${pack.packageName} is up to date")
+        try {
+            val installers = listOf(
+                AppFilterIconPackInstaller(context, appDatabase),
+                GrayscaleMapIconPackInstaller(context, appDatabase),
+            )
+            val installedPacks = mutableListOf<IconPack>()
+            for (installer in installers) {
+                val iconPacks = installer.getInstalledIconPacks()
+                for (pack in iconPacks) {
+                    if (forceReinstall || !installer.isInstalledAndUpToDate(pack)) {
+                        installer.install(pack)
+                        iconsHaveBeenUpdated = true
+                    } else {
+                        Log.d("MM20", "Icon pack ${pack.packageName} is up to date")
+                    }
                 }
+                installedPacks.addAll(iconPacks)
             }
-            installedPacks.addAll(iconPacks)
+            uninstallAllIconPacksExcept(installedPacks)
+        } finally {
+            updateIconPacksMutex.unlock()
         }
-        uninstallAllIconPacksExcept(installedPacks)
-        updateIconPacksMutex.unlock()
         return iconsHaveBeenUpdated
     }
 

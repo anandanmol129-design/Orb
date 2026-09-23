@@ -102,7 +102,6 @@ internal data class LauncherApp(
         try {
             val icon =
                 withContext(Dispatchers.IO) {
-                    val density = size / (108 / 1.5)
                     launcherActivityInfo.getIcon(0)
 
                 } ?: return null
@@ -277,17 +276,6 @@ internal data class LauncherApp(
                 context.packageManager.getPackageInfo(packageName, 0).versionName
             } catch (e: PackageManager.NameNotFoundException) {
                 null
-            }
-        }
-
-        fun isSuspended(context: Context, packageName: String): Boolean {
-            return try {
-                context.packageManager.getApplicationInfo(
-                    packageName,
-                    0
-                ).flags and ApplicationInfo.FLAG_SUSPENDED != 0
-            } catch (e: PackageManager.NameNotFoundException) {
-                false
             }
         }
 

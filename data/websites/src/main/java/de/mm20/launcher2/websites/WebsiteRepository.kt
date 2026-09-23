@@ -105,7 +105,6 @@ internal class WebsiteRepository(
             } catch (e: UncheckedIOException) {
             } catch (e: URISyntaxException) {
             } catch (e: RuntimeException) {
-            } catch (e: IllegalArgumentException) {
             }
             return@withContext null
         }

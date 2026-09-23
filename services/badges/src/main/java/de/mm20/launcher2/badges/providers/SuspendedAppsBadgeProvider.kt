@@ -8,9 +8,8 @@ import de.mm20.launcher2.search.Application
 import de.mm20.launcher2.search.Searchable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
-import org.koin.core.component.KoinComponent
 
-class SuspendedAppsBadgeProvider : BadgeProvider, KoinComponent {
+class SuspendedAppsBadgeProvider : BadgeProvider {
 
     override fun getBadge(searchable: Searchable): Flow<Badge?> {
         return if (searchable is Application && searchable.isSuspended) {

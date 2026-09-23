@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.function.Function;
@@ -30,7 +31,12 @@ import java.util.ArrayList;
 
 public class OsmAddressFormatter {
 
+  private static final Pattern lowerCamelToUnderscorePattern = Pattern.compile("([a-z])([A-Z])");
   private static final RegexPatternCache regexPatternCache = new RegexPatternCache();
+  private static final MustacheFactory mustacheFactory = new DefaultMustacheFactory();
+  // Compiled templates are cached by template text; all templates come from the bundled
+  // worldwide.json, so the cache is bounded and produces identical output to compiling on the fly.
+  private static final Map<String, Mustache> mustacheCache = new ConcurrentHashMap<>();
   private static final List<String> knownComponents = OsmAddressFormatter.getKnownComponents();
   private static final Map<String, String> replacements = new HashMap<String, String>() {{
     put("[\\},\\s]+$", "");
@@ -107,8 +113,7 @@ public class OsmAddressFormatter {
   }
 
   private String lowerCamelToUnderscore(String input) {
-    Pattern pattern = Pattern.compile("([a-z])([A-Z])");
-    Matcher matcher = pattern.matcher(input);
+    Matcher matcher = lowerCamelToUnderscorePattern.matcher(input);
     String result = matcher.replaceAll("$1_$2");
     return result.toLowerCase();
   }
@@ -428,8 +433,9 @@ public class OsmAddressFormatter {
     });
 
     JsonNode templateText = chooseTemplateText(template, components);
-    MustacheFactory mf = new DefaultMustacheFactory();
-    Mustache m = mf.compile(new StringReader(templateText.asText()), "example");
+    String templateName = templateText.asText();
+    Mustache m = mustacheCache.computeIfAbsent(templateName,
+        name -> mustacheFactory.compile(new StringReader(name), "example"));
     StringWriter st = new StringWriter();
     m.execute(st, new Object[]{ components, callback});
     String rendered = cleanupRender(st.toString());

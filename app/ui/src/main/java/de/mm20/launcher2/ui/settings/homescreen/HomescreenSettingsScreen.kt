@@ -42,6 +42,7 @@ import androidx.navigation3.runtime.NavKey
 import de.mm20.launcher2.preferences.SearchBarColors
 import de.mm20.launcher2.preferences.SearchBarStyle
 import de.mm20.launcher2.preferences.SystemBarColors
+import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.ui.R
 import de.mm20.launcher2.ui.component.DismissableBottomSheet
 import de.mm20.launcher2.ui.component.SearchBar
@@ -80,6 +81,7 @@ fun HomescreenSettingsScreen() {
     val dimWallpaper by viewModel.dimWallpaper.collectAsStateWithLifecycle()
     val blurWallpaper by viewModel.blurWallpaper.collectAsStateWithLifecycle()
     val blurWallpaperRadius by viewModel.blurWallpaperRadius.collectAsStateWithLifecycle()
+    val wallpaperType by viewModel.wallpaperType.collectAsStateWithLifecycle()
     val lightNavBar by viewModel.navBarIcons.collectAsStateWithLifecycle(null)
     val hideStatusBar by viewModel.hideStatusBar.collectAsStateWithLifecycle(null)
     val hideNavBar by viewModel.hideNavBar.collectAsStateWithLifecycle(null)
@@ -183,6 +185,22 @@ fun HomescreenSettingsScreen() {
         }
         item {
             PreferenceCategory(stringResource(id = R.string.preference_category_wallpaper)) {
+                ListPreference(
+                    title = stringResource(R.string.preference_wallpaper_type),
+                    value = wallpaperType,
+                    items = listOf(
+                        stringResource(R.string.preference_wallpaper_type_system) to WallpaperType.System,
+                        stringResource(R.string.preference_wallpaper_type_water) to WallpaperType.Water,
+                        stringResource(R.string.preference_wallpaper_type_prism) to WallpaperType.Prism,
+                        stringResource(R.string.preference_wallpaper_type_solar_system) to WallpaperType.SolarSystem,
+                        stringResource(R.string.preference_wallpaper_type_boids) to WallpaperType.Boids,
+                        stringResource(R.string.preference_wallpaper_type_mandelbrot) to WallpaperType.Mandelbrot,
+                        stringResource(R.string.preference_wallpaper_type_double_pendulum) to WallpaperType.DoublePendulum,
+                    ),
+                    onValueChanged = {
+                        viewModel.setWallpaperType(it)
+                    },
+                )
                 Preference(
                     title = stringResource(R.string.wallpaper),
                     summary = stringResource(R.string.preference_wallpaper_summary),

@@ -7,11 +7,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 data class GestureSettingsData(
-    val swipeDown: GestureAction,
-    val swipeLeft: GestureAction,
-    val swipeRight: GestureAction,
-    val swipeUp: GestureAction,
+    val tap: GestureAction,
     val doubleTap: GestureAction,
+    val tripleTap: GestureAction,
     val longPress: GestureAction,
     val homeButton: GestureAction,
 )
@@ -21,29 +19,21 @@ class GestureSettings internal constructor(
 ): Flow<GestureSettingsData> by (
     dataStore.data.map {
         GestureSettingsData(
-            swipeDown = it.gesturesSwipeDown,
-            swipeLeft = it.gesturesSwipeLeft,
-            swipeRight = it.gesturesSwipeRight,
-            swipeUp = it.gesturesSwipeUp,
+            tap = it.gesturesTap,
             doubleTap = it.gesturesDoubleTap,
+            tripleTap = it.gesturesTripleTap,
             longPress = it.gesturesLongPress,
             homeButton = it.gesturesHomeButton,
         )
     }.distinctUntilChanged()
 ) {
-    val swipeDown: Flow<GestureAction> = dataStore.data.map { it.gesturesSwipeDown }
-        .distinctUntilChanged()
-
-    val swipeLeft: Flow<GestureAction> = dataStore.data.map { it.gesturesSwipeLeft }
-        .distinctUntilChanged()
-
-    val swipeRight: Flow<GestureAction> = dataStore.data.map { it.gesturesSwipeRight }
-        .distinctUntilChanged()
-
-    val swipeUp: Flow<GestureAction> = dataStore.data.map { it.gesturesSwipeUp }
+    val tap: Flow<GestureAction> = dataStore.data.map { it.gesturesTap }
         .distinctUntilChanged()
 
     val doubleTap: Flow<GestureAction> = dataStore.data.map { it.gesturesDoubleTap }
+        .distinctUntilChanged()
+
+    val tripleTap: Flow<GestureAction> = dataStore.data.map { it.gesturesTripleTap }
         .distinctUntilChanged()
 
     val longPress: Flow<GestureAction> = dataStore.data.map { it.gesturesLongPress }
@@ -52,33 +42,21 @@ class GestureSettings internal constructor(
     val homeButton: Flow<GestureAction> = dataStore.data.map { it.gesturesHomeButton }
         .distinctUntilChanged()
 
-    fun setSwipeDown(action: GestureAction) {
+    fun setTap(action: GestureAction) {
         dataStore.update {
-            it.copy(gesturesSwipeDown = action)
-        }
-    }
-
-    fun setSwipeLeft(action: GestureAction) {
-        dataStore.update {
-            it.copy(gesturesSwipeLeft = action)
-        }
-    }
-
-    fun setSwipeRight(action: GestureAction) {
-        dataStore.update {
-            it.copy(gesturesSwipeRight = action)
-        }
-    }
-
-    fun setSwipeUp(action: GestureAction) {
-        dataStore.update {
-            it.copy(gesturesSwipeUp = action)
+            it.copy(gesturesTap = action)
         }
     }
 
     fun setDoubleTap(action: GestureAction) {
         dataStore.update {
             it.copy(gesturesDoubleTap = action)
+        }
+    }
+
+    fun setTripleTap(action: GestureAction) {
+        dataStore.update {
+            it.copy(gesturesTripleTap = action)
         }
     }
 

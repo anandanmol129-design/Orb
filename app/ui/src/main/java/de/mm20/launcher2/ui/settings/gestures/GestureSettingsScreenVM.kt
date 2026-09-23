@@ -37,44 +37,30 @@ internal class GestureSettingsScreenVM : ViewModel(), KoinComponent {
     val hasPermission = permissionsManager.hasPermission(PermissionGroup.Accessibility)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
 
-    val swipeDown = gestureSettings.swipeDown
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
-    val swipeLeft = gestureSettings.swipeLeft
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
-    val swipeRight = gestureSettings.swipeRight
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
-    val swipeUp = gestureSettings.swipeUp
+    val tap = gestureSettings.tap
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
     val doubleTap = gestureSettings.doubleTap
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+    val tripleTap = gestureSettings.tripleTap
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
     val longPress = gestureSettings.longPress
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
     val homeButton = gestureSettings.homeButton
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
 
-    fun setSwipeDown(action: GestureAction, searchable: SavableSearchable?) {
+    fun setTap(action: GestureAction, searchable: SavableSearchable?) {
         saveShortcut(searchable)
-        gestureSettings.setSwipeDown(action)
-    }
-
-    fun setSwipeLeft(action: GestureAction, searchable: SavableSearchable?) {
-        saveShortcut(searchable)
-        gestureSettings.setSwipeLeft(action)
-    }
-
-    fun setSwipeRight(action: GestureAction, searchable: SavableSearchable?) {
-        saveShortcut(searchable)
-        gestureSettings.setSwipeRight(action)
-    }
-
-    fun setSwipeUp(action: GestureAction, searchable: SavableSearchable?) {
-        saveShortcut(searchable)
-        gestureSettings.setSwipeUp(action)
+        gestureSettings.setTap(action)
     }
 
     fun setDoubleTap(action: GestureAction, searchable: SavableSearchable?) {
         saveShortcut(searchable)
         gestureSettings.setDoubleTap(action)
+    }
+
+    fun setTripleTap(action: GestureAction, searchable: SavableSearchable?) {
+        saveShortcut(searchable)
+        gestureSettings.setTripleTap(action)
     }
 
     fun setLongPress(action: GestureAction, searchable: SavableSearchable?) {
@@ -93,13 +79,11 @@ internal class GestureSettingsScreenVM : ViewModel(), KoinComponent {
 
     val shortcutOptions: Flow<List<SavableSearchable>> = gestureSettings.flatMapLatest {
         val keys = listOfNotNull(
-            (it.swipeUp as? GestureAction.Launch)?.key,
-            (it.swipeLeft as? GestureAction.Launch)?.key,
-            (it.swipeRight as? GestureAction.Launch)?.key,
-            (it.swipeDown as? GestureAction.Launch)?.key,
+            (it.tap as? GestureAction.Launch)?.key,
             (it.doubleTap as? GestureAction.Launch)?.key,
-            (it.homeButton as? GestureAction.Launch)?.key,
+            (it.tripleTap as? GestureAction.Launch)?.key,
             (it.longPress as? GestureAction.Launch)?.key,
+            (it.homeButton as? GestureAction.Launch)?.key,
         )
         searchableRepository.getByKeys(keys)
     }

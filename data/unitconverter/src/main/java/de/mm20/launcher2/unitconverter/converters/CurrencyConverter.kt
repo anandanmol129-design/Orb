@@ -11,6 +11,7 @@ import de.mm20.launcher2.unitconverter.MeasureUnit
 import de.mm20.launcher2.unitconverter.UnitValue
 import java.text.DecimalFormat
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 import java.util.Currency as JCurrency
 
@@ -21,12 +22,16 @@ class CurrencyConverter(
 
     override val dimension: Dimension = Dimension.Currency
 
-    suspend fun getAbbreviations(): List<String> {
-        return repository.getKnownUnits()
-    }
-
-
     private val topCurrencies = arrayOf("USD", "EUR", "JPY", "GBP", "AUD")
+
+    private val decimalFormats = ThreadLocal.withInitial { HashMap<String, DecimalFormat>() }
+
+    private val nameCache = ConcurrentHashMap<String, String>()
+
+    private fun decimalFormat(pattern: String): DecimalFormat =
+        decimalFormats.get().getOrPut("$pattern#${Locale.getDefault().toLanguageTag()}") {
+            DecimalFormat(pattern)
+        }
 
     override suspend fun isValidUnit(symbol: String): Boolean {
         return repository.isValidCurrency(symbol)
@@ -34,19 +39,21 @@ class CurrencyConverter(
 
 
     private fun formatName(symbol: String, value: Double): String {
-        val text = StringBuilder()
         val currency = Currency.getInstance(symbol) ?: return formatNameFallback(symbol)
-        val pluralCount = PluralRules.forLocale(Locale.getDefault()).select(value)
-        text.append(
-            currency.getName(
-                Locale.getDefault(),
-                Currency.PLURAL_LONG_NAME,
-                pluralCount,
-                booleanArrayOf(false)
+        val locale = Locale.getDefault()
+        val pluralCount = PluralRules.forLocale(locale).select(value)
+        return nameCache.getOrPut("$symbol#$pluralCount#${locale.toLanguageTag()}") {
+            val text = StringBuilder()
+            text.append(
+                currency.getName(
+                    locale,
+                    Currency.PLURAL_LONG_NAME,
+                    pluralCount,
+                    booleanArrayOf(false)
+                )
             )
-        )
-
-        return text.toString()
+            text.toString()
+        }
     }
 
     private fun formatNameFallback(symbol: String): String {
@@ -55,8 +62,7 @@ class CurrencyConverter(
 
     private fun formatValue(symbol: String, value: Double): String {
         if (abs(value) > 1e10) {
-            return DecimalFormat("#.###E0").apply {
-            }.format(value)
+            return decimalFormat("#.###E0").format(value)
         }
         val currency = JCurrency.getInstance(symbol)
         return if (currency != null) {
@@ -64,9 +70,9 @@ class CurrencyConverter(
             val digits = currency.defaultFractionDigits
             if (digits > 0) format.append(".")
             for (i in 0 until digits) format.append("0")
-            DecimalFormat(format.toString()).format(value)
+            decimalFormat(format.toString()).format(value)
         } else {
-            DecimalFormat("#,##0.00").format(value)
+            decimalFormat("#,##0.00").format(value)
         }
     }
 

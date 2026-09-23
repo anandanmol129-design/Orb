@@ -52,12 +52,15 @@ value class ResultScore private constructor(private val packed: Long) : Comparab
     }
 
     companion object {
+        // JaroWinkler only holds an immutable threshold and computes with locals, so a single
+        // shared instance is safe to use from any thread.
+        private val jaroWinkler = JaroWinkler()
+
         fun from(
             query: String,
             primaryFields: Iterable<String> = emptyList(),
             secondaryFields: Iterable<String> = emptyList(),
         ): ResultScore {
-            val jaroWinkler = JaroWinkler()
             val bestPrimaryScore = primaryFields.maxOfOrNull { term ->
                 val sim = jaroWinkler.similarity(query, term).toFloat()
                 ResultScore(

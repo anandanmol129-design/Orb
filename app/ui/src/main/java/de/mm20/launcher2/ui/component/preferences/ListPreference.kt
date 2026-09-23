@@ -69,7 +69,7 @@ fun <T> ListPreference(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp)
                     ) {
-                        items(items) {
+                        items(items, key = { it.label }) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier

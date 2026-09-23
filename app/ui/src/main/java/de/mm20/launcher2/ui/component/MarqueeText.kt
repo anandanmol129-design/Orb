@@ -14,7 +14,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
@@ -80,15 +79,14 @@ fun MarqueeText(
             .conditional(
                 textLayout != null && textLayout!!.size.width > textSize,
                 Modifier
-                    .drawWithContent {
-                        drawContent()
-                        if (fadeLeft != null) {
-                            drawFadedEdge(leftEdge = true, fadeLeft)
-                        }
-                        if (fadeRight != null) {
-                            drawFadedEdge(leftEdge = false, fadeRight)
-                        }
-                    }
+                    .then(
+                        if (fadeLeft != null) Modifier.drawFadedEdge(leftEdge = true, edgeWidth = fadeLeft)
+                        else Modifier
+                    )
+                    .then(
+                        if (fadeRight != null) Modifier.drawFadedEdge(leftEdge = false, edgeWidth = fadeRight)
+                        else Modifier
+                    )
             )
             .basicMarquee(
                 iterations = iterations,

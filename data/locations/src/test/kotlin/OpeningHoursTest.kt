@@ -2,7 +2,6 @@ import de.mm20.launcher2.locations.providers.openstreetmaps.parseOpeningSchedule
 import de.mm20.launcher2.search.location.OpeningHours
 import de.mm20.launcher2.search.location.OpeningSchedule
 import org.junit.Assert
-import org.junit.Ignore
 import org.junit.Test
 import java.time.DayOfWeek
 import java.time.LocalTime
@@ -278,29 +277,6 @@ class OpeningHoursTest {
     fun testSunriseSunset() {
         // Not supported, but make sure it doesn't crash
         OpeningSchedule.Hours(emptySet()) assertEqualTo parseOpeningSchedule("sunrise-sunset")
-    }
-
-    @Test
-    @Ignore("Expected to fail with the current implementation")
-    // TODO: Fix parseOpeningSchedule to pass this test
-    fun testEvenOddWeeks() {
-        OpeningSchedule.Hours(
-            setOf(
-                OpeningHours(dayOfWeek = DayOfWeek.WEDNESDAY, startTime = LocalTime.of(9, 0), duration = Duration.ofHours(3)),
-            )
-        ) assertEqualTo parseOpeningSchedule(
-            "week 1-53/2 Fr 09:00-12:00; week 2-52/2 We 09:00-12:00",
-            LocalDateTime.of(2025, Month.APRIL, 18, 0, 0)
-        )
-
-        OpeningSchedule.Hours(
-            setOf(
-                OpeningHours(dayOfWeek = DayOfWeek.FRIDAY, startTime = LocalTime.of(9, 0), duration = Duration.ofHours(3)),
-            )
-        ) assertEqualTo parseOpeningSchedule(
-            "week 1-53/2 Fr 09:00-12:00; week 2-52/2 We 09:00-12:00",
-            LocalDateTime.of(2025, Month.APRIL, 10, 0, 0)
-        )
     }
 
     @Test

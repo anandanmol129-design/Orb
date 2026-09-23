@@ -30,11 +30,11 @@ android {
         }
     }
     defaultConfig {
-        applicationId = "de.mm20.launcher2"
+        applicationId = "com.anmol.orb"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.toIntOrNull() ?: 2026091500
-        versionName = "1.41.0"
+        versionName = "0.1.0"
         signingConfig = signingConfigs.getByName("debug")
     }
 
@@ -67,13 +67,6 @@ android {
             applicationIdSuffix = ".nightly"
             versionNameSuffix = "-${LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"))}-nightly"
             signingConfig = signingConfigs.findByName("gh-actions")
-
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
 
         flavorDimensions += "variant"
@@ -114,12 +107,15 @@ dependencies {
     //Android Jetpack
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core)
+    implementation(libs.androidx.profileinstaller)
 
     implementation(libs.coil.core)
     implementation(libs.coil.svg)
 
     implementation(libs.koin.android)
 
+    implementation(project(":core:agent"))
+    implementation(project(":data:orb"))
     implementation(project(":services:accounts"))
     implementation(project(":data:applications"))
     implementation(project(":data:appshortcuts"))
@@ -160,6 +156,7 @@ dependencies {
     implementation(project(":services:global-actions"))
     implementation(project(":services:widgets"))
     implementation(project(":services:favorites"))
+    implementation(project(":services:voice"))
     implementation(project(":data:locations"))
     implementation(project(":services:plugins"))
     implementation(project(":core:devicepose"))

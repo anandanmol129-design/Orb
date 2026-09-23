@@ -1,10 +1,8 @@
 package de.mm20.launcher2.searchactions.actions
 
 import android.app.SearchManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Bundle
 import de.mm20.launcher2.ktx.tryStartActivity
 
 data class AppSearchAction(

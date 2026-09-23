@@ -2,6 +2,7 @@ package de.mm20.launcher2.preferences.media
 
 import de.mm20.launcher2.preferences.LauncherDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 data class MediaSettingsData(
@@ -16,9 +17,9 @@ class MediaSettings internal constructor(
         it.mediaAllowList,
         it.mediaDenyList
     )
-}) {
+}.distinctUntilChanged()) {
     val allowList
-        get() = launcherDataStore.data.map { it.mediaAllowList }
+        get() = launcherDataStore.data.map { it.mediaAllowList }.distinctUntilChanged()
 
     fun setLists(allowList: Set<String>, denyList: Set<String>) {
         launcherDataStore.update {
@@ -27,5 +28,5 @@ class MediaSettings internal constructor(
     }
 
     val denyList
-        get() = launcherDataStore.data.map { it.mediaDenyList }
+        get() = launcherDataStore.data.map { it.mediaDenyList }.distinctUntilChanged()
 }

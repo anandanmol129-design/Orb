@@ -5,6 +5,8 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
 import de.mm20.launcher2.accounts.accountsModule
+import de.mm20.launcher2.agent.agentModule
+import de.mm20.launcher2.orb.orbModule
 import de.mm20.launcher2.applications.applicationsModule
 import de.mm20.launcher2.appshortcuts.appShortcutsModule
 import de.mm20.launcher2.backup.backupModule
@@ -41,17 +43,13 @@ import de.mm20.launcher2.services.tags.servicesTagsModule
 import de.mm20.launcher2.services.widgets.widgetsServiceModule
 import de.mm20.launcher2.themes.themesModule
 import de.mm20.launcher2.weather.weatherModule
-import kotlinx.coroutines.*
+import de.mm20.launcher2.voice.voiceModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
-import kotlin.coroutines.CoroutineContext
 
-class LauncherApplication : Application(), CoroutineScope, ImageLoaderFactory {
-
-    override val coroutineContext: CoroutineContext
-        get() = Dispatchers.Main + SupervisorJob()
+class LauncherApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
@@ -63,6 +61,8 @@ class LauncherApplication : Application(), CoroutineScope, ImageLoaderFactory {
             androidContext(this@LauncherApplication)
             modules(
                 listOf(
+                    agentModule,
+                    orbModule,
                     accountsModule,
                     applicationsModule,
                     appShortcutsModule,
@@ -100,6 +100,7 @@ class LauncherApplication : Application(), CoroutineScope, ImageLoaderFactory {
                     profilesModule,
                     i18nDataModule,
                     feedModule,
+                    voiceModule,
                 )
             )
         }
@@ -110,7 +111,6 @@ class LauncherApplication : Application(), CoroutineScope, ImageLoaderFactory {
             .components {
                 add(SvgDecoder.Factory())
             }
-            .crossfade(true)
             .crossfade(200)
             .build()
     }

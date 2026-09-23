@@ -3,6 +3,7 @@ package de.mm20.launcher2.ui.launcher.widgets.external
 import android.appwidget.AppWidgetProviderInfo
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.SizeF
 import android.util.SparseIntArray
 import android.view.View
@@ -16,6 +17,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
@@ -36,11 +38,19 @@ fun AppWidgetHost(
     borderless: Boolean = false,
     useThemeColors: Boolean = false,
     onLightBackground: Boolean = false,
+    isResizing: Boolean = false,
 ) {
     val padding = if (borderless) 0 else 8.dp.toPixels().roundToInt()
 
     val colorScheme = MaterialTheme.colorScheme
     val appWidgetHost = LocalAppWidgetHost.current
+
+    // Building the color mapping involves dozens of HCT color conversions and is quite expensive.
+    // It only depends on the color scheme, so cache it instead of recomputing it on every
+    // recomposition (e.g. while resizing a widget).
+    val colorMapping = remember(useThemeColors, colorScheme) {
+        if (useThemeColors && isAtLeastApiLevel(31)) getColorMapping(colorScheme) else null
+    }
 
     BoxWithConstraints(
         modifier = modifier,
@@ -48,6 +58,10 @@ fun AppWidgetHost(
         val maxWidth = maxWidth
         val maxHeight = maxHeight
         key(widgetId) {
+            val lastSize = remember { intArrayOf(-1, -1) }
+            val lastUpdateTime = remember { longArrayOf(0L) }
+            val lastColorMapping = remember { arrayOfNulls<SparseIntArray>(1) }
+            val colorsApplied = remember { booleanArrayOf(false) }
             AndroidView(
                 modifier = modifier
                     .fillMaxSize(),
@@ -60,27 +74,42 @@ fun AppWidgetHost(
                     if (isAtLeastApiLevel(29)) {
                         it.setOnLightBackground(onLightBackground)
                     }
+                    val widthPx = maxWidth.value.roundToInt()
+                    val heightPx = maxHeight.value.roundToInt()
                     if (isAtLeastApiLevel(31)) {
-                        if (useThemeColors) {
-                            val colorMapping = getColorMapping(colorScheme)
-                            it.setColorResources(colorMapping)
-                        } else {
-                            it.resetColorResources()
+                        if (!colorsApplied[0] || colorMapping !== lastColorMapping[0]) {
+                            colorsApplied[0] = true
+                            lastColorMapping[0] = colorMapping
+                            if (colorMapping != null) {
+                                it.setColorResources(colorMapping)
+                            } else {
+                                it.resetColorResources()
+                            }
                         }
-                        it.updateAppWidgetSize(
-                            Bundle(),
-                            arrayListOf(SizeF(maxWidth.value, maxHeight.value))
-                        )
+                        val sizeChanged = lastSize[0] != widthPx || lastSize[1] != heightPx
+                        if (sizeChanged && shouldUpdateSize(isResizing, lastUpdateTime)) {
+                            lastSize[0] = widthPx
+                            lastSize[1] = heightPx
+                            it.updateAppWidgetSize(
+                                Bundle(),
+                                arrayListOf(SizeF(maxWidth.value, maxHeight.value))
+                            )
+                        }
                     } else {
-                        it.updateAppWidgetSize(
-                            null,
-                            maxWidth.value.roundToInt(),
-                            maxHeight.value.roundToInt(),
-                            maxWidth.value.roundToInt(),
-                            maxHeight.value.roundToInt(),
-                        )
-                        // Workaround to force update of the widget view
-                        it.updateAppWidgetOptions(Bundle())
+                        val sizeChanged = lastSize[0] != widthPx || lastSize[1] != heightPx
+                        if (sizeChanged && shouldUpdateSize(isResizing, lastUpdateTime)) {
+                            lastSize[0] = widthPx
+                            lastSize[1] = heightPx
+                            it.updateAppWidgetSize(
+                                null,
+                                widthPx,
+                                heightPx,
+                                widthPx,
+                                heightPx,
+                            )
+                            // Workaround to force update of the widget view
+                            it.updateAppWidgetOptions(Bundle())
+                        }
                     }
                     it.setPadding(padding)
                 }
@@ -96,6 +125,16 @@ private fun enableNestedScroll(view: View) {
         }
     }
     if (view is ListView || view is ScrollView) view.isNestedScrollingEnabled = true
+}
+
+private const val RESIZE_THROTTLE_MS = 33L
+
+private fun shouldUpdateSize(isResizing: Boolean, lastUpdateTime: LongArray): Boolean {
+    if (!isResizing) return true
+    val now = SystemClock.elapsedRealtime()
+    if (now - lastUpdateTime[0] < RESIZE_THROTTLE_MS) return false
+    lastUpdateTime[0] = now
+    return true
 }
 
 @RequiresApi(Build.VERSION_CODES.S)

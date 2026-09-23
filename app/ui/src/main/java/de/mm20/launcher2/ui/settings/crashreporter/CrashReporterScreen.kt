@@ -65,7 +65,7 @@ fun CrashReporterScreen() {
                     }
                 }
             }
-            items(it) {
+            items(it, key = { report -> report.filePath }) {
                 Surface(
                     shape = MaterialTheme.shapes.medium,
                 ) {

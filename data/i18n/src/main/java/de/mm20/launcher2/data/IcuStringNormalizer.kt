@@ -33,15 +33,13 @@ internal class IcuStringNormalizer(
         }
         .stateIn(scope, SharingStarted.Eagerly, DisabledTransliteratorId)
 
+    private var cachedTransliteratorId: String? = null
+    private var cachedTransliterator: Transliterator? = null
+
     override fun normalize(input: String): String {
         val id = transliteratorId.value
 
-        val transliterator = try {
-            Transliterator.getInstance(id)
-        } catch (e: IllegalArgumentException) {
-            CrashReporter.logException(e)
-            null
-        }
+        val transliterator = getTransliterator(id)
 
         if (transliterator ==  null) {
             return StringUtils.stripAccents(input.lowercase(Locale.getDefault()))
@@ -51,6 +49,25 @@ internal class IcuStringNormalizer(
         }
 
         return transliterator.transliterate(input).lowercase()
+    }
+
+    @Synchronized
+    private fun getTransliterator(id: String): Transliterator? {
+        if (id == cachedTransliteratorId) return cachedTransliterator
+
+        val transliterator = try {
+            Transliterator.getInstance(id)
+        } catch (e: IllegalArgumentException) {
+            CrashReporter.logException(e)
+            null
+        }
+
+        // Only cache successful compilation. Failures keep being logged per call.
+        if (transliterator != null) {
+            cachedTransliterator = transliterator
+            cachedTransliteratorId = id
+        }
+        return transliterator
     }
 
     private fun getTransliteratorId(preferenceValue: String?): String {

@@ -14,6 +14,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import androidx.core.net.toUri
 
 internal interface TextClassifier {
@@ -21,6 +22,21 @@ internal interface TextClassifier {
 }
 
 internal class TextClassifierImpl : TextClassifier {
+
+    private val bestDateTimePatterns = ConcurrentHashMap<String, String>()
+
+    private fun bestDateTimePattern(skeleton: String): String {
+        val locale = Locale.getDefault()
+        return bestDateTimePatterns.getOrPut("${locale.toLanguageTag()}|$skeleton") {
+            DateFormat.getBestDateTimePattern(locale, skeleton)
+        }
+    }
+
+    private val unitRegexes = ConcurrentHashMap<String, Regex>()
+
+    private fun unitRegex(pattern: String): Regex =
+        unitRegexes.getOrPut(pattern) { Regex(pattern) }
+
     override suspend fun classify(context: Context, query: String): TextClassificationResult {
         val trimmedQuery = query.trim()
 
@@ -65,10 +81,7 @@ internal class TextClassifierImpl : TextClassifier {
         trimmedQuery: String
     ): TextClassificationResult? {
         val dateFormat = SimpleDateFormat(
-            DateFormat.getBestDateTimePattern(
-                Locale.getDefault(),
-                "yyyyMMdd, h:m a"
-            ),
+            bestDateTimePattern("yyyyMMdd, h:m a"),
             context.resources.configuration.locales[0]
         )
         try {
@@ -84,12 +97,7 @@ internal class TextClassifierImpl : TextClassifier {
             // Not a 12h datetime
         }
 
-        dateFormat.applyPattern(
-            DateFormat.getBestDateTimePattern(
-                Locale.getDefault(),
-                "yyyyMMdd, H:m"
-            ),
-        )
+        dateFormat.applyPattern(bestDateTimePattern("yyyyMMdd, H:m"))
         try {
             dateFormat.parse(trimmedQuery)?.let {
                 val dateTime = LocalDateTime.ofInstant(it.toInstant(), ZoneId.systemDefault())
@@ -102,12 +110,7 @@ internal class TextClassifierImpl : TextClassifier {
         } catch (_: ParseException) {
             // Not a 24h datetime
         }
-        dateFormat.applyPattern(
-            DateFormat.getBestDateTimePattern(
-                Locale.getDefault(),
-                "yyyyMMdd"
-            ),
-        )
+        dateFormat.applyPattern(bestDateTimePattern("yyyyMMdd"))
         try {
             dateFormat.parse(trimmedQuery)?.let {
                 return TextClassificationResult(
@@ -120,12 +123,7 @@ internal class TextClassifierImpl : TextClassifier {
             // Not a date either
         }
 
-        dateFormat.applyPattern(
-            DateFormat.getBestDateTimePattern(
-                Locale.getDefault(),
-                "h:m a"
-            ),
-        )
+        dateFormat.applyPattern(bestDateTimePattern("h:m a"))
         try {
             dateFormat.parse(trimmedQuery)?.let {
                 return TextClassificationResult(
@@ -138,12 +136,7 @@ internal class TextClassifierImpl : TextClassifier {
             // Not a 12h time
         }
 
-        dateFormat.applyPattern(
-            DateFormat.getBestDateTimePattern(
-                Locale.getDefault(),
-                "H:m"
-            ),
-        )
+        dateFormat.applyPattern(bestDateTimePattern("H:m"))
         try {
             dateFormat.parse(trimmedQuery)?.let {
                 return TextClassificationResult(
@@ -157,7 +150,7 @@ internal class TextClassifierImpl : TextClassifier {
         }
 
         val seconds = context.getString(R.string.unit_second_symbol)
-        val secondsMatch = Regex("^([0-9]+)\\s?${seconds}$").find(trimmedQuery)
+        val secondsMatch = unitRegex("^([0-9]+)\\s?${seconds}$").find(trimmedQuery)
         if (secondsMatch != null) {
             val value = secondsMatch.groups[1]!!.value.toLong()
             return TextClassificationResult(
@@ -167,7 +160,7 @@ internal class TextClassifierImpl : TextClassifier {
         }
 
         val days = context.getString(R.string.unit_day_symbol)
-        val daysMatch = Regex("^([0-9]+)\\s?${days}$").find(trimmedQuery)
+        val daysMatch = unitRegex("^([0-9]+)\\s?${days}$").find(trimmedQuery)
         if (daysMatch != null) {
             val value = daysMatch.groups[1]!!.value.toLong()
             return TextClassificationResult(
@@ -177,10 +170,9 @@ internal class TextClassifierImpl : TextClassifier {
         }
 
         val minutes = context.getString(R.string.unit_minute_symbol)
-        val minutesMatch = Regex("^([0-9]+)\\s?${minutes}$").find(trimmedQuery)
+        val minutesMatch = unitRegex("^([0-9]+)\\s?${minutes}$").find(trimmedQuery)
         if (minutesMatch != null) {
             val value = minutesMatch.groups[1]!!.value.toLong()
-            val then = LocalDateTime.now().plusMinutes(value)
             return TextClassificationResult(
                 text = trimmedQuery,
                 timespan = Duration.ofMinutes(value)
@@ -188,7 +180,7 @@ internal class TextClassifierImpl : TextClassifier {
         }
 
         val hours = context.getString(R.string.unit_hour_symbol)
-        val hoursMatch = Regex("^([0-9]+)\\s?${hours}$").find(trimmedQuery)
+        val hoursMatch = unitRegex("^([0-9]+)\\s?${hours}$").find(trimmedQuery)
         if (hoursMatch != null) {
             val value = hoursMatch.groups[1]!!.value.toLong()
             return TextClassificationResult(

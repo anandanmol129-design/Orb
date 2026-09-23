@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import de.mm20.launcher2.ktx.tryStartActivity
-import java.net.URL
 
 data class OpenUrlAction(
     override val label: String,

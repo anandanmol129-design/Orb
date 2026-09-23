@@ -351,7 +351,7 @@ private fun CurrencyPickerSheet(
             ),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            itemsIndexed(availableCurrencies) { i, currency ->
+            itemsIndexed(availableCurrencies, key = { _, currency -> currency.currencyCode }) { i, currency ->
                 Box(
                     modifier = Modifier.clip(
                         shape = getShape(i, availableCurrencies.size)

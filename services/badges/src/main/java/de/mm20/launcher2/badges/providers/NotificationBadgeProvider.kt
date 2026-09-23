@@ -1,6 +1,5 @@
 package de.mm20.launcher2.badges.providers
 
-import android.util.Log
 import de.mm20.launcher2.badges.Badge
 import de.mm20.launcher2.badges.MutableBadge
 import de.mm20.launcher2.notifications.NotificationRepository
@@ -20,17 +19,16 @@ class NotificationBadgeProvider : BadgeProvider, KoinComponent {
 
         val packageName = searchable.componentName.packageName
         return notificationRepository.notifications.map {
-            it.filter { it.packageName == packageName && it.canShowBadge }
-        }.map {
-            if (it.isEmpty()) {
+            val matching = it.filter { it.packageName == packageName && it.canShowBadge }
+            if (matching.isEmpty()) {
                 return@map null
             } else {
                 val badge = MutableBadge(
-                    number = it.sumOf {
+                    number = matching.sumOf {
                         if (it.canShowBadge && !it.isGroupSummary) it.number
                         else 0
                     },
-                    progress = it.mapNotNull {
+                    progress = matching.mapNotNull {
                         val progress = it.progress ?: return@mapNotNull null
                         val progressMax = it.progressMax ?: return@mapNotNull null
                         return@mapNotNull progress.toFloat() / progressMax.toFloat()

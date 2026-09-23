@@ -2,7 +2,6 @@ package de.mm20.launcher2.search
 
 import de.mm20.launcher2.search.location.OpeningHours
 import de.mm20.launcher2.search.location.OpeningSchedule
-import kotlinx.collections.immutable.persistentListOf
 import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -66,7 +65,6 @@ class OpeningScheduleTest(val date: LocalDateTime, val expected: Boolean) {
                 ),
             )
         )
-        println("${date.dayOfWeek}, ${date.toLocalTime()}")
         Assert.assertEquals(expected, openingSchedule.isOpen(date))
     }
 

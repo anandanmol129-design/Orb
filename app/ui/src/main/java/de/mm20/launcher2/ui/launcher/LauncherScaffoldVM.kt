@@ -9,6 +9,7 @@ import de.mm20.launcher2.preferences.GestureAction
 import de.mm20.launcher2.preferences.ScreenOrientation
 import de.mm20.launcher2.preferences.SearchBarColors
 import de.mm20.launcher2.preferences.SearchBarStyle
+import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.preferences.ui.GestureSettings
 import de.mm20.launcher2.preferences.ui.UiSettings
 import de.mm20.launcher2.search.SavableSearchable
@@ -75,6 +76,8 @@ class LauncherScaffoldVM : ViewModel(), KoinComponent {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), true)
     val wallpaperBlurRadius = uiSettings.wallpaperBlurRadius
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 32)
+    val wallpaperType = uiSettings.wallpaperType
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), WallpaperType.System)
 
 
     val fillClockHeight = uiSettings.clockFillScreen
@@ -85,64 +88,50 @@ class LauncherScaffoldVM : ViewModel(), KoinComponent {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), SearchBarStyle.Transparent)
 
     val gestureState: StateFlow<GestureState?> = gestureSettings.map { settings ->
-            val swipeLeftAction = settings.swipeLeft
-            val swipeRightAction = settings.swipeRight
-            val swipeDownAction = settings.swipeDown
-            val swipeUpAction = settings.swipeUp
-            val longPressAction = settings.longPress
+            val tapAction = settings.tap
             val doubleTapAction = settings.doubleTap
+            val tripleTapAction = settings.tripleTap
+            val longPressAction = settings.longPress
             val homeButtonAction = settings.homeButton
 
-            val swipeLeftAppKey = (swipeLeftAction as? GestureAction.Launch)?.key
-            val swipeRightAppKey = (swipeRightAction as? GestureAction.Launch)?.key
-            val swipeDownAppKey = (swipeDownAction as? GestureAction.Launch)?.key
-            val swipeUpAppKey = (swipeUpAction as? GestureAction.Launch)?.key
-            val longPressAppKey = (longPressAction as? GestureAction.Launch)?.key
+            val tapAppKey = (tapAction as? GestureAction.Launch)?.key
             val doubleTapAppKey = (doubleTapAction as? GestureAction.Launch)?.key
+            val tripleTapAppKey = (tripleTapAction as? GestureAction.Launch)?.key
+            val longPressAppKey = (longPressAction as? GestureAction.Launch)?.key
             val homeButtonAppKey = (homeButtonAction as? GestureAction.Launch)?.key
             val apps = listOfNotNull(
-                swipeLeftAppKey,
-                swipeRightAppKey,
-                swipeDownAppKey,
-                swipeUpAppKey,
-                longPressAppKey,
+                tapAppKey,
                 doubleTapAppKey,
+                tripleTapAppKey,
+                longPressAppKey,
                 homeButtonAppKey,
             ).let { searchableRepository.getByKeys(it).first() }
 
             GestureState(
-                swipeLeftAction = swipeLeftAction,
-                swipeRightAction = swipeRightAction,
-                swipeDownAction = swipeDownAction,
-                swipeUpAction = swipeUpAction,
-                longPressAction = longPressAction,
+                tapAction = tapAction,
                 doubleTapAction = doubleTapAction,
+                tripleTapAction = tripleTapAction,
+                longPressAction = longPressAction,
                 homeButtonAction = homeButtonAction,
-                swipeLeftApp = apps.find { it.key == swipeLeftAppKey },
-                swipeRightApp = apps.find { it.key == swipeRightAppKey },
-                swipeDownApp = apps.find { it.key == swipeDownAppKey },
-                swipeUpApp = apps.find { it.key == swipeUpAppKey },
-                longPressApp = apps.find { it.key == longPressAppKey },
+                tapApp = apps.find { it.key == tapAppKey },
                 doubleTapApp = apps.find { it.key == doubleTapAppKey },
+                tripleTapApp = apps.find { it.key == tripleTapAppKey },
+                longPressApp = apps.find { it.key == longPressAppKey },
                 homeButtonApp = apps.find { it.key == homeButtonAppKey },
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 }
 
 data class GestureState(
-    val swipeLeftAction: GestureAction = GestureAction.NoAction,
-    val swipeRightAction: GestureAction = GestureAction.NoAction,
-    val swipeDownAction: GestureAction = GestureAction.NoAction,
-    val swipeUpAction: GestureAction = GestureAction.NoAction,
-    val longPressAction: GestureAction = GestureAction.NoAction,
+    val tapAction: GestureAction = GestureAction.NoAction,
     val doubleTapAction: GestureAction = GestureAction.NoAction,
+    val tripleTapAction: GestureAction = GestureAction.NoAction,
+    val longPressAction: GestureAction = GestureAction.NoAction,
     val homeButtonAction: GestureAction = GestureAction.NoAction,
-    val swipeLeftApp: SavableSearchable? = null,
-    val swipeRightApp: SavableSearchable? = null,
-    val swipeDownApp: SavableSearchable? = null,
-    val swipeUpApp: SavableSearchable? = null,
-    val longPressApp: SavableSearchable? = null,
+    val tapApp: SavableSearchable? = null,
     val doubleTapApp: SavableSearchable? = null,
+    val tripleTapApp: SavableSearchable? = null,
+    val longPressApp: SavableSearchable? = null,
     val homeButtonApp: SavableSearchable? = null,
 )
 

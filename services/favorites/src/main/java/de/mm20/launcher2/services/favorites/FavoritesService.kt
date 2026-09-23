@@ -42,7 +42,7 @@ class FavoritesService(
     }
 
     fun reset(searchable: SavableSearchable) {
-        searchableRepository.update(
+        searchableRepository.upsert(
             searchable,
             pinned = false,
             visibility = VisibilityLevel.Default,

@@ -21,11 +21,9 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,7 +50,7 @@ data object LogRoute: NavKey
 
 @Composable
 fun LogScreen() {
-    var lines by remember { mutableStateOf(emptyList<LogcatLine>()) }
+    val lines = remember { mutableStateListOf<LogcatLine>() }
     val listState = rememberLazyListState()
 
     LaunchedEffect(null) {
@@ -82,7 +80,7 @@ fun LogScreen() {
                 } catch (e: IOException) {
                     break
                 }
-                lines = (lines + line)
+                lines.add(line)
             }
         }
         try {
@@ -94,6 +92,12 @@ fun LogScreen() {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val xs = MaterialTheme.shapes.extraSmall
+    val md = MaterialTheme.shapes.medium
+    val firstShape = md.copy(bottomStart = xs.bottomStart, bottomEnd = xs.bottomEnd)
+    val lastShape = md.copy(topStart = xs.topStart, topEnd = xs.topEnd)
+    val lastIndex = lines.lastIndex
 
     PreferenceScreen(
         title = stringResource(id = R.string.preference_logs),
@@ -123,15 +127,13 @@ fun LogScreen() {
         verticalArrangement = Arrangement.spacedBy(2.dp),
         lazyColumnState = listState,
     ) {
-        itemsIndexed(lines) { i, it ->
-            val xs = MaterialTheme.shapes.extraSmall
-            val md = MaterialTheme.shapes.medium
-            val shape = xs.copy(
-                topStart = if (i == 0) md.topStart else xs.topStart,
-                topEnd = if (i == 0) md.topEnd else xs.topEnd,
-                bottomStart = if (i == lines.lastIndex) md.bottomStart else xs.bottomStart,
-                bottomEnd = if (i == lines.lastIndex) md.bottomEnd else xs.bottomEnd,
-            )
+        itemsIndexed(lines, key = { i, _ -> i }) { i, it ->
+            val shape = when {
+                i == 0 && i == lastIndex -> md
+                i == 0 -> firstShape
+                i == lastIndex -> lastShape
+                else -> xs
+            }
 
             if (it is RawLogcatLine) {
                 Text(

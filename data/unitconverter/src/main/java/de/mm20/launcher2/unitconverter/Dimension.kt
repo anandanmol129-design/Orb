@@ -10,10 +10,6 @@ enum class Dimension(@StringRes val resource: Int) {
     Area(R.string.dimension_area),
     Currency(R.string.dimension_currency),
     Data(R.string.dimension_data),
-    Bitrate(R.string.dimension_bitrate),
-    Pressure(R.string.dimension_pressure),
-    Energy(R.string.dimension_energy),
-    Frequency(R.string.dimension_frequency),
     Temperature(R.string.dimension_temperature),
     Time(R.string.dimension_time),
 }

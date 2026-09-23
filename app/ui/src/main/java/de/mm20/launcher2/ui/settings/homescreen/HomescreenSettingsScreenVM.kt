@@ -18,6 +18,7 @@ import de.mm20.launcher2.preferences.ScreenOrientation
 import de.mm20.launcher2.preferences.SearchBarColors
 import de.mm20.launcher2.preferences.SearchBarStyle
 import de.mm20.launcher2.preferences.SystemBarColors
+import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.preferences.ui.ClockWidgetSettings
 import de.mm20.launcher2.preferences.ui.GestureSettings
 import de.mm20.launcher2.preferences.ui.UiSettings
@@ -57,6 +58,13 @@ class HomescreenSettingsScreenVM(
 
     fun setBlurWallpaperRadius(blurWallpaperRadius: Int) {
         uiSettings.setWallpaperBlurRadius(blurWallpaperRadius)
+    }
+
+    val wallpaperType = uiSettings.wallpaperType
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), WallpaperType.System)
+
+    fun setWallpaperType(wallpaperType: WallpaperType) {
+        uiSettings.setWallpaperType(wallpaperType)
     }
 
     fun openWallpaperChooser(context: AppCompatActivity) {

@@ -105,19 +105,22 @@ class DevicePoseProvider internal constructor(
 
     fun getAzimuthDegrees(samplingPeriodUs: Int = SensorManager.SENSOR_DELAY_UI): Flow<Float> =
         callbackFlow {
+            // Reused across sensor events; callbacks of a single listener are serialized.
+            val rotationMatrix = FloatArray(9)
+            val orientationAngles = FloatArray(3)
+            val declinationCache = DeclinationCache()
             val azimuthCallback = object : SensorEventListener {
                 override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
                 override fun onSensorChanged(event: SensorEvent?) {
                     if (event?.sensor?.type != Sensor.TYPE_ROTATION_VECTOR)
                         return
 
-                    val rotationMatrix = FloatArray(9)
-                    val orientationAngles = FloatArray(3)
-
                     SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
                     SensorManager.getOrientation(rotationMatrix, orientationAngles)
 
-                    trySend(orientationAngles[0] * 180f / Float.PI + (lastCachedLocation?.declination ?: 0f))
+                    val location = lastCachedLocation
+                    val declination = if (location != null) declinationCache.get(location) else 0f
+                    trySend(orientationAngles[0] * 180f / Float.PI + declination)
                 }
             }
 
@@ -178,5 +181,37 @@ class DevicePoseProvider internal constructor(
         } else {
             headingEastwardDegrees - azimuthDegrees
         }
+    }
+}
+
+private const val DECLINATION_BUCKET_MS = 5 * 60 * 1000L
+
+/**
+ * Caches [de.mm20.launcher2.ktx.declination] (GeomagneticField) lookups, which change very
+ * slowly. The key is the exact (latitude, longitude, altitude) of the location fix plus a
+ * 5-minute bucket of its fix time, so within one bucket for the same coordinates the returned
+ * declination is identical (cache validity: 5 minutes).
+ */
+private class DeclinationCache {
+    private var latitude = Double.NaN
+    private var longitude = Double.NaN
+    private var altitude = Double.NaN
+    private var timeBucket = Long.MIN_VALUE
+    private var value = 0f
+
+    fun get(location: Location): Float {
+        val bucket = location.time / DECLINATION_BUCKET_MS
+        if (bucket != timeBucket ||
+            location.latitude != latitude ||
+            location.longitude != longitude ||
+            location.altitude != altitude
+        ) {
+            latitude = location.latitude
+            longitude = location.longitude
+            altitude = location.altitude
+            timeBucket = bucket
+            value = location.declination
+        }
+        return value
     }
 }

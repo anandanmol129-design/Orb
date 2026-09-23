@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.util.Log
 import androidx.core.content.ContextCompat
 import de.mm20.launcher2.calendar.providers.AndroidCalendarEvent
 import de.mm20.launcher2.calendar.providers.AndroidCalendarProvider
@@ -20,8 +19,6 @@ import de.mm20.launcher2.search.SearchableSerializer
 import de.mm20.launcher2.search.UpdateResult
 import de.mm20.launcher2.search.asUpdateResult
 import de.mm20.launcher2.serialization.Json
-import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString

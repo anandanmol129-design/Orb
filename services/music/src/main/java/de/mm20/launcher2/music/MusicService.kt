@@ -42,7 +42,6 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.koin.core.component.KoinComponent
 import java.io.IOException
 
 interface MusicService {
@@ -78,7 +77,7 @@ internal class MusicServiceImpl(
     private val context: Context,
     notificationRepository: NotificationRepository,
     private val settings: MediaSettings,
-) : MusicService, KoinComponent {
+) : MusicService {
 
     private val scope = CoroutineScope(Job() + Dispatchers.Default)
 
@@ -356,7 +355,9 @@ internal class MusicServiceImpl(
                     }
                 } else {
                     val file = java.io.File(context.filesDir, "album_art")
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, file.outputStream())
+                    file.outputStream().use {
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                    }
                     preferences.edit {
                         putString(PREFS_KEY_ALBUM_ART, "notnull")
                     }
@@ -399,7 +400,7 @@ internal class MusicServiceImpl(
                 send(SupportedActions())
                 return@collectLatest
             }
-            send(SupportedActions(lastPlayerPackage, state.actions, state.customActions))
+            send(SupportedActions(state.actions, state.customActions))
         }
     }.shareIn(scope, SharingStarted.WhileSubscribed(), 1)
 

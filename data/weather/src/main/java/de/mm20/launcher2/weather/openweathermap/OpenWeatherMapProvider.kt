@@ -31,10 +31,11 @@ internal class OpenWeatherMapProvider(
 
     private suspend fun getWeatherData(lat: Double, lon: Double, locationName: String?): List<Forecast>? {
         val lang = getLanguageCode()
+        val apiKey = getApiKey(context) ?: return null
 
         val currentWeather = try {
             openWeatherMapApi.currentWeather(
-                appid = getApiKey(context) ?: return null,
+                appid = apiKey,
                 lat = lat,
                 lon = lon,
                 lang = lang,
@@ -57,7 +58,7 @@ internal class OpenWeatherMapProvider(
             openWeatherMapApi.forecast5Day3Hour(
                 lat = coords.lat,
                 lon = coords.lon,
-                appid = getApiKey(context) ?: return null,
+                appid = apiKey,
                 lang = lang
             )
         } catch (e: Exception) {
@@ -122,9 +123,10 @@ internal class OpenWeatherMapProvider(
     }
 
     override suspend fun findLocation(query: String): List<WeatherLocation> {
+        val apiKey = getApiKey(context) ?: return emptyList()
         val response = try {
             openWeatherMapApi.geocode(
-                appid = getApiKey(context) ?: return emptyList(),
+                appid = apiKey,
                 q = query,
             )
         } catch (e: Exception) {

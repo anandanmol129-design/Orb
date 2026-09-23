@@ -16,6 +16,8 @@ data class Calculator(
     val formattedHexString: String
     val formattedOctString: String
 
+    private val beautifiedTerm: String
+
     init {
         if (solution.isNaN()) {
             formattedString = "NaN"
@@ -24,10 +26,10 @@ data class Calculator(
             formattedHexString = "NaN"
         } else {
             val nf =
-                if ((abs(solution) > 1e12 || abs(solution) < 1e-5) && solution != 0.0) DecimalFormat(
+                if ((abs(solution) > 1e12 || abs(solution) < 1e-5) && solution != 0.0) decimalFormat(
                     "#.######E0"
                 )
-                else DecimalFormat("#,###.######")
+                else decimalFormat("#,###.######")
             formattedString = nf.format(solution)
             var s = StringBuffer(solution.roundToInt().toString(2))
             while (s.length % 4 != 0) {
@@ -59,32 +61,43 @@ data class Calculator(
             }
             formattedHexString = s.toString()
         }
+        beautifiedTerm = when {
+            term.matches(HexRegex) -> term.substring(2).uppercase(Locale.ROOT) + "₁₆"
+            term.matches(BinRegex) -> term.substring(2) + "₂"
+            term.matches(OctRegex) -> term.substring(1) + "₈"
+            else -> term.replace(WhitespaceRegex, "")
+                .replace("pi", " π ", ignoreCase = true)
+                .replace("*", " × ")
+                .replace("-", " − ")
+                .replace("/", " ∕ ")
+                .replace("+", " + ")
+                .replace(AmpersandsRegex, " ∧ ")
+                .replace(PipesRegex, " ∨ ")
+                .replace("!=", " ≠ ")
+                .replace("<>", " ≠ ")
+                .replace(">=", " ≥ ")
+                .replace("<=", " ≤ ")
+                .replace("=", " = ")
+                .replace("<", " < ")
+                .replace(">", " > ")
+        }
     }
 
-    fun getBeatifiedTerm(): String {
-        if(term.matches(Regex("0x[0-9a-fA-F]+"))) {
-            return term.substring(2).uppercase(Locale.ROOT) + "₁₆"
-        }
-        if(term.matches(Regex("0b[01]+"))) {
-            return term.substring(2) + "₂"
-        }
-        if(term.matches(Regex("0[0-7]+"))) {
-            return term.substring(1) + "₈"
-        }
-        return term.replace(Regex("\\s+"), "")
-            .replace("pi", " \u03C0 ", ignoreCase = true)
-            .replace("*", " \u00D7 ")
-            .replace("-", " \u2212 ")
-            .replace("/", " \u2215 ")
-            .replace("+", " + ")
-            .replace(Regex("&{1,2}"), " \u2227 ")
-            .replace(Regex("\\|{1,2}"), " \u2228 ")
-            .replace("!=", " \u2260 ")
-            .replace("<>", " \u2260 ")
-            .replace(">=", " \u2265 ")
-            .replace("<=", " \u2264 ")
-            .replace("=", " = ")
-            .replace("<", " < ")
-            .replace(">", " > ")
+    fun getBeatifiedTerm(): String = beautifiedTerm
+
+    companion object {
+        private val HexRegex = Regex("0x[0-9a-fA-F]+")
+        private val BinRegex = Regex("0b[01]+")
+        private val OctRegex = Regex("0[0-7]+")
+        private val WhitespaceRegex = Regex("\\s+")
+        private val AmpersandsRegex = Regex("&{1,2}")
+        private val PipesRegex = Regex("\\|{1,2}")
+
+        private val decimalFormats = ThreadLocal.withInitial { HashMap<String, DecimalFormat>() }
+
+        private fun decimalFormat(pattern: String): DecimalFormat =
+            decimalFormats.get().getOrPut("$pattern#${Locale.getDefault().toLanguageTag()}") {
+                DecimalFormat(pattern)
+            }
     }
 }

@@ -1,0 +1,147 @@
+# Baseline profile rules for the Orb launcher (hand-written).
+#
+# Covers the cold-start and first-frame hot path:
+#   - Application/Koin startup: LauncherApplication (org.koin.* is intentionally excluded;
+#     third-party libraries ship their own baseline profiles)
+#   - Launcher entry points: SharedLauncherActivity + LauncherActivity / AssistantActivity
+#   - First frame: ProvideSettings / ProvideCurrentTime / LauncherTheme,
+#     LauncherScaffold + LauncherScaffoldVM, OrbHomeComponent / OrbSphere / OrbShapes,
+#     ClockWidget + parts (widgets/clock/parts)
+#   - Search VM first-use classes: SearchVM, SearchableItemVM
+#
+# Format (ART human-readable profile):
+#   - `Lclass;`            class rule (no flags allowed on class rules)
+#   - `HSPLclass;->**(**)**`  hot/startup/post-startup rule for every method of a class
+#   - `Class$*;`           companion objects, nested classes, and synthetic/lambda classes
+# Wildcards: `?` = one character, `*` = one name part, `**` = anything.
+# AGP expands these wildcards against the compiled program
+# (ExpandArtProfileWildcardsTask) before packaging the profile.
+#
+# To regenerate this profile later with a macrobenchmark:
+#   1. Add a `com.android.test` module with the `androidx.baselineprofile` plugin, targeting
+#      :app (see https://developer.android.com/topic/performance/baselineprofiles/create-baselineprofile).
+#   2. Write a BaselineProfileRule test that starts the launcher and exercises the home
+#      screen, clock widget and first search (uiAutomator { startApp(...) } etc.).
+#   3. Run `./gradlew :<baseline-profile-module>:generateBaselineProfile` on a rooted
+#      device (API 33+) or a Gradle-managed device and replace this file with the generated
+#      `baseline-prof.txt` output.
+
+# --- Application startup -----------------------------------------------------
+Lde/mm20/launcher2/LauncherApplication;
+HSPLde/mm20/launcher2/LauncherApplication;->**(**)**
+
+# --- Launcher entry points ---------------------------------------------------
+Lde/mm20/launcher2/ui/launcher/SharedLauncherActivity;
+HSPLde/mm20/launcher2/ui/launcher/SharedLauncherActivity;->**(**)**
+Lde/mm20/launcher2/ui/launcher/SharedLauncherActivity$*;
+HSPLde/mm20/launcher2/ui/launcher/SharedLauncherActivity$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/LauncherActivity;
+HSPLde/mm20/launcher2/ui/launcher/LauncherActivity;->**(**)**
+Lde/mm20/launcher2/ui/launcher/LauncherActivity$*;
+HSPLde/mm20/launcher2/ui/launcher/LauncherActivity$*;->**(**)**
+Lde/mm20/launcher2/ui/assistant/AssistantActivity;
+HSPLde/mm20/launcher2/ui/assistant/AssistantActivity;->**(**)**
+Lde/mm20/launcher2/ui/assistant/AssistantActivity$*;
+HSPLde/mm20/launcher2/ui/assistant/AssistantActivity$*;->**(**)**
+
+# --- First frame: theme + composition locals ---------------------------------
+Lde/mm20/launcher2/ui/theme/LauncherThemeKt;
+HSPLde/mm20/launcher2/ui/theme/LauncherThemeKt;->**(**)**
+Lde/mm20/launcher2/ui/theme/LauncherThemeKt$*;
+HSPLde/mm20/launcher2/ui/theme/LauncherThemeKt$*;->**(**)**
+Lde/mm20/launcher2/ui/base/ProvideSettingsKt;
+HSPLde/mm20/launcher2/ui/base/ProvideSettingsKt;->**(**)**
+Lde/mm20/launcher2/ui/base/ProvideSettingsKt$*;
+HSPLde/mm20/launcher2/ui/base/ProvideSettingsKt$*;->**(**)**
+Lde/mm20/launcher2/ui/base/ProvideCurrentTimeKt;
+HSPLde/mm20/launcher2/ui/base/ProvideCurrentTimeKt;->**(**)**
+Lde/mm20/launcher2/ui/base/ProvideCurrentTimeKt$*;
+HSPLde/mm20/launcher2/ui/base/ProvideCurrentTimeKt$*;->**(**)**
+
+# --- First frame: launcher scaffold ------------------------------------------
+Lde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldKt;
+HSPLde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldKt;->**(**)**
+Lde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldKt$*;
+HSPLde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldKt$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldState;
+HSPLde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldState;->**(**)**
+Lde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldState$*;
+HSPLde/mm20/launcher2/ui/launcher/scaffold/LauncherScaffoldState$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/scaffold/ScaffoldConfiguration;
+HSPLde/mm20/launcher2/ui/launcher/scaffold/ScaffoldConfiguration;->**(**)**
+Lde/mm20/launcher2/ui/launcher/scaffold/ScaffoldConfiguration$*;
+HSPLde/mm20/launcher2/ui/launcher/scaffold/ScaffoldConfiguration$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/scaffold/ScaffoldGesture;
+HSPLde/mm20/launcher2/ui/launcher/scaffold/ScaffoldGesture;->**(**)**
+Lde/mm20/launcher2/ui/launcher/LauncherScaffoldVM;
+HSPLde/mm20/launcher2/ui/launcher/LauncherScaffoldVM;->**(**)**
+Lde/mm20/launcher2/ui/launcher/LauncherScaffoldVM$*;
+HSPLde/mm20/launcher2/ui/launcher/LauncherScaffoldVM$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/GestureState;
+HSPLde/mm20/launcher2/ui/launcher/GestureState;->**(**)**
+
+# --- First frame: orb --------------------------------------------------------
+Lde/mm20/launcher2/ui/launcher/orb/OrbHomeComponent;
+HSPLde/mm20/launcher2/ui/launcher/orb/OrbHomeComponent;->**(**)**
+Lde/mm20/launcher2/ui/launcher/orb/OrbHomeComponent$*;
+HSPLde/mm20/launcher2/ui/launcher/orb/OrbHomeComponent$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/orb/OrbSphereKt;
+HSPLde/mm20/launcher2/ui/launcher/orb/OrbSphereKt;->**(**)**
+Lde/mm20/launcher2/ui/launcher/orb/OrbSphereKt$*;
+HSPLde/mm20/launcher2/ui/launcher/orb/OrbSphereKt$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/orb/OrbShapesKt;
+HSPLde/mm20/launcher2/ui/launcher/orb/OrbShapesKt;->**(**)**
+Lde/mm20/launcher2/ui/launcher/orb/OrbShapesKt$*;
+HSPLde/mm20/launcher2/ui/launcher/orb/OrbShapesKt$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/orb/OrbState;
+HSPLde/mm20/launcher2/ui/launcher/orb/OrbState;->**(**)**
+
+# --- First frame: clock widget + parts ---------------------------------------
+Lde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetKt;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetKt;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetKt$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetKt$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetVM;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetVM;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetVM$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/ClockWidgetVM$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/PartProvider;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/PartProvider;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/PartProvider$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/PartProvider$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/AlarmPartProvider;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/AlarmPartProvider;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/AlarmPartProvider$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/AlarmPartProvider$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/BatteryPartProvider;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/BatteryPartProvider;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/BatteryPartProvider$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/BatteryPartProvider$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/DatePartProvider;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/DatePartProvider;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/DatePartProvider$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/DatePartProvider$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/FavoritesPartProvider;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/FavoritesPartProvider;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/FavoritesPartProvider$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/FavoritesPartProvider$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/MusicPartProvider;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/MusicPartProvider;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/MusicPartProvider$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/MusicPartProvider$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/SmartspacerPartProvider;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/SmartspacerPartProvider;->**(**)**
+Lde/mm20/launcher2/ui/launcher/widgets/clock/parts/SmartspacerPartProvider$*;
+HSPLde/mm20/launcher2/ui/launcher/widgets/clock/parts/SmartspacerPartProvider$*;->**(**)**
+
+# --- Search VM first use -----------------------------------------------------
+Lde/mm20/launcher2/ui/launcher/search/SearchVM;
+HSPLde/mm20/launcher2/ui/launcher/search/SearchVM;->**(**)**
+Lde/mm20/launcher2/ui/launcher/search/SearchVM$*;
+HSPLde/mm20/launcher2/ui/launcher/search/SearchVM$*;->**(**)**
+Lde/mm20/launcher2/ui/launcher/search/SearchCategory;
+HSPLde/mm20/launcher2/ui/launcher/search/SearchCategory;->**(**)**
+Lde/mm20/launcher2/ui/launcher/search/common/SearchableItemVM;
+HSPLde/mm20/launcher2/ui/launcher/search/common/SearchableItemVM;->**(**)**
+Lde/mm20/launcher2/ui/launcher/search/common/SearchableItemVM$*;
+HSPLde/mm20/launcher2/ui/launcher/search/common/SearchableItemVM$*;->**(**)**

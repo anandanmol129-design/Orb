@@ -89,7 +89,7 @@ fun MediaIntegrationSettingsScreen() {
                 )
             }
         }
-        itemsIndexed(apps) { index, app ->
+        itemsIndexed(apps, key = { _, app -> app.packageName }) { index, app ->
             Box(
                 modifier = Modifier.clip(
                     when {

@@ -20,11 +20,14 @@ import org.shredzone.commons.suncalc.SunTimes
 import java.io.IOException
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 
 internal class MetNoProvider(
@@ -125,9 +128,19 @@ internal class MetNoProvider(
         return null
     }
 
+    private val sunTimesCache = ConcurrentHashMap<SunTimesKey, SunTimes>()
+
+    private data class SunTimesKey(val day: LocalDate, val lat: Double, val lon: Double)
+
+    private fun cachedSunTimes(timestamp: Long, lat: Double, lon: Double): SunTimes {
+        val day = Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
+        return sunTimesCache.computeIfAbsent(SunTimesKey(day, lat, lon)) {
+            SunTimes.compute().on(Date(timestamp)).at(lat, lon).execute()
+        }
+    }
 
     private fun isNight(timestamp: Long, lat: Double, lon: Double): Boolean {
-        val sunTimes = SunTimes.compute().on(Date(timestamp)).at(lat, lon).execute()
+        val sunTimes = cachedSunTimes(timestamp, lat, lon)
         if (sunTimes.isAlwaysDown) return true
         if (sunTimes.isAlwaysUp) return false
 

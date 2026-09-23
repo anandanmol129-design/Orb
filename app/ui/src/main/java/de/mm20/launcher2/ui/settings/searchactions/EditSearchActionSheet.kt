@@ -100,6 +100,9 @@ import de.mm20.launcher2.ui.component.SearchActionIcon
 import de.mm20.launcher2.ui.component.preferences.ListPreference
 import de.mm20.launcher2.ui.ktx.toPixels
 
+private val NonDigitRegex = Regex("[^0-9]")
+private val NonDecimalRegex = Regex("[^0-9.]")
+
 @Composable
 fun EditSearchActionSheet(
     expanded: Boolean,
@@ -393,7 +396,7 @@ private fun InitAppSearchPage(viewModel: EditSearchActionSheetVM) {
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
-            items(searchableApps!!) {
+            items(searchableApps!!, key = { it.componentName }) {
                 OutlinedCard(
                     onClick = { viewModel.selectSearchableApp(it) },
                     modifier = Modifier
@@ -1009,7 +1012,7 @@ fun PickIcon(viewModel: EditSearchActionSheetVM) {
                             }
                         }
                     }
-                    items(availableIcons) {
+                    items(availableIcons, key = { it }) {
                         Box(
                             modifier = Modifier.padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
@@ -1160,7 +1163,7 @@ private fun IntentExtrasEditor(viewModel: EditSearchActionSheetVM) {
                             onValueChange = {
                                 viewModel.putLongExtra(
                                     key,
-                                    it.replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0
+                                    it.replace(NonDigitRegex, "").toLongOrNull() ?: 0
                                 )
                             },
                             label = { Text(key) },
@@ -1181,7 +1184,7 @@ private fun IntentExtrasEditor(viewModel: EditSearchActionSheetVM) {
                             onValueChange = {
                                 viewModel.putIntExtra(
                                     key,
-                                    it.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                                    it.replace(NonDigitRegex, "").toIntOrNull() ?: 0
                                 )
                             },
                             label = { Text(key) },
@@ -1202,7 +1205,7 @@ private fun IntentExtrasEditor(viewModel: EditSearchActionSheetVM) {
                             onValueChange = {
                                 viewModel.putDoubleExtra(
                                     key,
-                                    it.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 0.0
+                                    it.replace(NonDecimalRegex, "").toDoubleOrNull() ?: 0.0
                                 )
                             },
                             label = { Text(key) },
@@ -1223,7 +1226,7 @@ private fun IntentExtrasEditor(viewModel: EditSearchActionSheetVM) {
                             onValueChange = {
                                 viewModel.putFloatExtra(
                                     key,
-                                    it.replace(Regex("[^0-9.]"), "").toFloatOrNull() ?: 0f
+                                    it.replace(NonDecimalRegex, "").toFloatOrNull() ?: 0f
                                 )
                             },
                             label = { Text(key) },

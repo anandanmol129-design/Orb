@@ -14,7 +14,7 @@ data class SupportedActions(
     val setRating: Boolean = false,
     val customActions: List<CustomAction> = emptyList()
 ) {
-    constructor(playerPackege: String?, actions: Long?, customActions: List<CustomAction>?) : this(
+    constructor(actions: Long?, customActions: List<CustomAction>?) : this(
         stop = actions?.and(PlaybackState.ACTION_STOP) == PlaybackState.ACTION_STOP,
         skipToNext = actions?.and(PlaybackState.ACTION_SKIP_TO_NEXT) == PlaybackState.ACTION_SKIP_TO_NEXT,
         skipToPrevious = actions?.and(PlaybackState.ACTION_SKIP_TO_PREVIOUS) == PlaybackState.ACTION_SKIP_TO_PREVIOUS,

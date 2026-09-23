@@ -25,7 +25,6 @@ internal fun PluginEntity(plugin: Plugin): PluginEntity {
         enabled = plugin.enabled,
         label = plugin.label,
         description = plugin.description,
-        settingsActivity = null,
         packageName = plugin.packageName,
         className = plugin.className,
         type = plugin.type.name,

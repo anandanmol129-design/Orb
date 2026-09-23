@@ -36,7 +36,9 @@ import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import de.mm20.launcher2.ui.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun EmojiPicker(
@@ -95,13 +97,21 @@ fun EmojiPicker(
     LaunchedEffect(selectedCategory.intValue) {
         if (selectedCategory.intValue in emojis) return@LaunchedEffect
         val categoryEmojis =
-            context.resources.openRawResource(categories[selectedCategory.intValue])
-                .bufferedReader().use {
-                    it.readLines().map { line ->
-                        line.split(",").toTypedArray()
-                    }.toTypedArray()
-                }
+            withContext(Dispatchers.Default) {
+                context.resources.openRawResource(categories[selectedCategory.intValue])
+                    .bufferedReader().use {
+                        it.readLines().map { line ->
+                            line.split(",").toTypedArray()
+                        }.toTypedArray()
+                    }
+            }
         emojis[selectedCategory.intValue] = categoryEmojis
+    }
+
+    val category = selectedCategory.intValue
+    val categoryEmojis = emojis[category]
+    val emojiKeys = remember(category, categoryEmojis) {
+        categoryEmojis?.map { "$category-${it[0]}" } ?: emptyList()
     }
 
     LazyVerticalGrid(
@@ -142,10 +152,10 @@ fun EmojiPicker(
             }
         }
         items(
-            emojis[selectedCategory.intValue]?.size ?: 0,
-            key = { selectedCategory.intValue.toString() + "-" + emojis[selectedCategory.intValue]?.get(it)?.get(0) }
+            categoryEmojis?.size ?: 0,
+            key = { emojiKeys[it] }
         ) { index ->
-            val emoji = emojis[selectedCategory.intValue]?.get(index) ?: return@items
+            val emoji = categoryEmojis?.get(index) ?: return@items
             if (emoji.size > 1) {
                 val tooltipState = rememberTooltipState(
                     isPersistent = true,

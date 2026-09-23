@@ -77,6 +77,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -99,6 +100,7 @@ import de.mm20.launcher2.searchactions.actions.SearchAction
 import de.mm20.launcher2.ui.component.SearchBarLevel
 import de.mm20.launcher2.ui.ktx.toPixels
 import de.mm20.launcher2.ui.launcher.SharedLauncherActivity
+import de.mm20.launcher2.ui.launcher.wallpaper.WallpaperPointer
 import de.mm20.launcher2.ui.launcher.helper.WallpaperBlur
 import de.mm20.launcher2.ui.launcher.scaffold.animation.Offset3D
 import de.mm20.launcher2.ui.launcher.scaffold.animation.PushScaffoldAnimationController
@@ -150,13 +152,21 @@ internal data class ScaffoldConfiguration(
      * Search component that is activated when the search bar is tapped.
      */
     val searchComponent: SearchComponent,
+    val tap: ScaffoldGesture? = null,
+    val doubleTap: ScaffoldGesture? = null,
+    val tripleTap: ScaffoldGesture? = null,
+    val longPress: ScaffoldGesture? = null,
+    val homeButton: ScaffoldGesture? = null,
+    /** Only used by assistant mode (swipe to dismiss). Unbound in launcher mode. */
     val swipeUp: ScaffoldGesture? = null,
     val swipeDown: ScaffoldGesture? = null,
     val swipeLeft: ScaffoldGesture? = null,
     val swipeRight: ScaffoldGesture? = null,
-    val doubleTap: ScaffoldGesture? = null,
-    val longPress: ScaffoldGesture? = null,
-    val homeButton: ScaffoldGesture? = null,
+    /**
+     * If false, launcher gestures are disabled and touch input is passed through to the wallpaper.
+     * The orb keeps its own touch handling.
+     */
+    val gesturesEnabled: Boolean = true,
     /**
      * Position of the search bar
      */
@@ -196,6 +206,10 @@ internal data class ScaffoldConfiguration(
         animation = ScaffoldAnimation.ZoomIn,
     )
 
+    /** True when any swipe slot is bound. Used by assistant mode only. */
+    val hasSwipeGestures: Boolean
+        get() = swipeUp != null || swipeDown != null || swipeLeft != null || swipeRight != null
+
     /**
      * Returns true if the given config prevents the user from accessing search or settings,
      * so that the user is locked out and the launcher is soft-bricked
@@ -203,37 +217,43 @@ internal data class ScaffoldConfiguration(
     fun isUseless(): Boolean {
         return searchBarStyle == SearchBarStyle.Hidden &&
                 listOfNotNull(
+                    tap,
+                    doubleTap,
+                    tripleTap,
+                    longPress,
+                    homeButton,
                     swipeUp,
                     swipeDown,
                     swipeLeft,
                     swipeRight,
-                    doubleTap,
-                    longPress,
-                    homeButton,
                 ).none { it.component.showSearchBar }
     }
 }
 
 private operator fun ScaffoldConfiguration.get(gesture: Gesture): ScaffoldGesture? {
     return when (gesture) {
+        Gesture.Tap -> tap
+        Gesture.DoubleTap -> doubleTap
+        Gesture.TripleTap -> tripleTap
+        Gesture.LongPress -> longPress
         Gesture.SwipeUp -> swipeUp
         Gesture.SwipeDown -> swipeDown
         Gesture.SwipeLeft -> swipeLeft
         Gesture.SwipeRight -> swipeRight
-        Gesture.DoubleTap -> doubleTap
-        Gesture.LongPress -> longPress
         Gesture.HomeButton -> homeButton
         Gesture.TapSearchBar -> searchBarTap
     }
 }
 
 enum class Gesture(val orientation: Orientation?) {
+    Tap(null),
+    DoubleTap(null),
+    TripleTap(null),
+    LongPress(null),
     SwipeUp(Orientation.Vertical),
     SwipeDown(Orientation.Vertical),
     SwipeLeft(Orientation.Horizontal),
     SwipeRight(Orientation.Horizontal),
-    DoubleTap(null),
-    LongPress(null),
     TapSearchBar(null),
     HomeButton(null),
 }
@@ -309,6 +329,14 @@ internal class LauncherScaffoldState(
         get() = currentOffset3D.z
     var currentGesture by mutableStateOf<Gesture?>(initialGesture)
         private set
+
+    /**
+     * Component/animation for a page opened directly (orb icons) rather than through a gesture
+     * binding. When set, these override the gesture-derived values for what's displayed, so the
+     * sphere can reach a page that isn't bound to any gesture.
+     */
+    private var openedComponent: ScaffoldComponent? by mutableStateOf(null)
+    private var openedAnimation: ScaffoldAnimation? by mutableStateOf(null)
 
     /**
      * True if the search is animating to open after tapping the search bar or performing a tap gesture.
@@ -446,13 +474,25 @@ internal class LauncherScaffoldState(
     }
 
     val currentAnimation by derivedStateOf {
-        val dir = currentGesture ?: return@derivedStateOf null
-        config[dir]?.animation
+        openedAnimation ?: currentGesture?.let { config[it]?.animation }
     }
 
     val currentComponent by derivedStateOf {
-        val dir = currentGesture ?: return@derivedStateOf null
-        config[dir]?.component
+        openedComponent ?: currentGesture?.let { config[it]?.component }
+    }
+
+    /**
+     * Tracks the active gesture and what to display. Pass [component]/[animation] for a direct
+     * open (they override the gesture binding); omit them so the bound gesture's config applies.
+     */
+    private fun setCurrentGesture(
+        gesture: Gesture?,
+        component: ScaffoldComponent? = null,
+        animation: ScaffoldAnimation? = null,
+    ) {
+        currentGesture = gesture
+        openedComponent = component
+        openedAnimation = animation
     }
 
     private val offsetAnimatable =
@@ -489,7 +529,7 @@ internal class LauncherScaffoldState(
     fun onDrag(offset: Offset) {
         if (isLocked || currentZOffset > 0f) return
         if (currentGesture == null || (!isSettledOnSecondaryPage && currentOffset.x.absoluteValue <= touchSlop && currentOffset.y.absoluteValue <= touchSlop)) {
-            currentGesture = getSwipeDirection(config, offset)
+            setCurrentGesture(getSwipeDirection(config, offset))
         }
 
         val direction = currentGesture ?: return
@@ -637,15 +677,11 @@ internal class LauncherScaffoldState(
             )
         }
 
-        if (!isSettledOnSecondaryPage) currentGesture = null
+        if (!isSettledOnSecondaryPage) setCurrentGesture(null)
     }
 
-    suspend fun onDoubleTap() {
-        performTapGesture(Gesture.DoubleTap)
-    }
-
-    suspend fun onLongPress() {
-        performTapGesture(Gesture.LongPress)
+    suspend fun onOrbGesture(gesture: Gesture) {
+        performTapGesture(gesture)
     }
 
     suspend fun onHomeButtonPress() {
@@ -687,7 +723,11 @@ internal class LauncherScaffoldState(
         val anim = currentAnimation ?: return
 
         when (gesture) {
-            Gesture.TapSearchBar, Gesture.DoubleTap, Gesture.LongPress -> {
+            Gesture.TapSearchBar,
+            Gesture.Tap,
+            Gesture.DoubleTap,
+            Gesture.TripleTap,
+            Gesture.LongPress -> {
                 currentOffset3D = Offset3D(z = progress)
             }
 
@@ -795,7 +835,7 @@ internal class LauncherScaffoldState(
             openSearch()
             return
         }
-        currentGesture = gesture
+        setCurrentGesture(gesture)
 
         currentOffset3D = currentOffset3D.copy(z = 0f)
         transitionToPage(ScaffoldPage.Secondary, component) {
@@ -836,13 +876,35 @@ internal class LauncherScaffoldState(
             ScaffoldPage.Home -> {
                 config.homeComponent.onActivate(this@LauncherScaffoldState)
                 component.onDismiss(this@LauncherScaffoldState)
-                currentGesture = null
+                setCurrentGesture(null)
                 secondaryPageSearchBarOffset = 0f
             }
         }
     }
 
-    private suspend fun openSearch() {
+    /**
+     * Opens [component] as the secondary page directly, without requiring it to be bound to a
+     * gesture. Used by the sphere's icons (widgets, search) so they reach those pages even when
+     * the user hasn't assigned them to a gesture.
+     */
+    suspend fun openComponent(
+        component: ScaffoldComponent,
+        animation: ScaffoldAnimation = ScaffoldAnimation.ZoomIn,
+    ) {
+        if (component.hapticFeedback) onHapticFeedback(HapticFeedbackType.LongPress)
+
+        setCurrentGesture(Gesture.Tap, component, animation)
+        currentOffset3D = currentOffset3D.copy(z = 0f)
+        transitionToPage(ScaffoldPage.Secondary, component) {
+            animateOffset3DTo(
+                Offset3D(z = 1f),
+                animationSpec = tween(300),
+            )
+            isSettledOnSecondaryPage = true
+        }
+    }
+
+    internal suspend fun openSearch() {
         if (currentComponent != null && currentComponent !is SearchComponent) {
             navigateBack(fast = true)
         }
@@ -851,23 +913,11 @@ internal class LauncherScaffoldState(
             return
         }
 
-        // If there is any swipe gesture that is a SearchComponent, this takes precedence over the tap
-        // This allows to close the search with a reversed swipe
-        val gestures =
-            listOf(Gesture.SwipeDown, Gesture.SwipeUp, Gesture.SwipeLeft, Gesture.SwipeRight)
-        val gesture = gestures.find { config[it]?.component is SearchComponent }
-
-        if (gesture == null) {
-            performTapGesture(Gesture.TapSearchBar)
-            return
-        }
-        isOpeningSearch = true
-        navigateToPage(gesture)
-        isOpeningSearch = false
+        openComponent(config.searchComponent)
     }
 
     suspend fun navigateToPage(gesture: Gesture) {
-        currentGesture = gesture
+        setCurrentGesture(gesture)
         val anim = config[gesture]?.animation ?: return
         val component = config[gesture]!!.component
 
@@ -1234,7 +1284,7 @@ internal fun LauncherScaffold(
                     state = rememberDraggable2DState {
                         state.onDrag(it)
                     },
-                    enabled = draggableOrientation == null,
+                    enabled = config.gesturesEnabled && config.hasSwipeGestures && draggableOrientation == null,
                     onDragStarted = {
                         scope.launch {
                             state.onDragStarted()
@@ -1251,7 +1301,7 @@ internal fun LauncherScaffold(
                         state.onDrag(Offset(0f, it))
                     },
                     orientation = Orientation.Vertical,
-                    enabled = draggableOrientation == Orientation.Vertical,
+                    enabled = config.gesturesEnabled && config.hasSwipeGestures && draggableOrientation == Orientation.Vertical,
                     onDragStarted = {
                         scope.launch {
                             state.onDragStarted()
@@ -1268,7 +1318,7 @@ internal fun LauncherScaffold(
                         state.onDrag(Offset(it, 0f))
                     },
                     orientation = Orientation.Horizontal,
-                    enabled = draggableOrientation == Orientation.Horizontal,
+                    enabled = config.gesturesEnabled && config.hasSwipeGestures && draggableOrientation == Orientation.Horizontal,
                     onDragStarted = {
                         scope.launch {
                             state.onDragStarted()
@@ -1299,34 +1349,40 @@ internal fun LauncherScaffold(
                 config.homeComponent.Component(
                     Modifier
                         .fillMaxSize()
+                        .pointerInput(Unit) {
+                            // Wallpapers live behind this layer and never join a hit path;
+                            // feed them the pointer here (an ancestor of every home hit).
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val e = awaitPointerEvent(PointerEventPass.Initial)
+                                    val c = e.changes.firstOrNull() ?: continue
+                                    WallpaperPointer.set(c.position, c.pressed)
+                                }
+                            }
+                        }
                         .pointerInput(
                             wallpaperManager,
-                            config.doubleTap,
-                            config.longPress,
-                            systemGestureBottomInset,
+                            config.gesturesEnabled,
                         ) {
-                            detectTapGestures(
-                                onDoubleTap = config.doubleTap?.let {
-                                    { scope.launch { state.onDoubleTap() } }
-                                },
-                                onLongPress = config.longPress?.let {
-                                    { offset ->
-                                        if (offset.y < (size.height - systemGestureBottomInset).toFloat()) {
-                                            scope.launch { state.onLongPress() }
-                                        }
+                            // Taps outside the orb are forwarded to the live wallpaper.
+                            // Swipe/tap gesture actions live on the orb only. Same as
+                            // upstream Kvaesitso: detectTapGestures only takes an
+                            // unconsumed down, so clickables in the home component
+                            // (clock, date, dock) always get their tap first.
+                            if (config.gesturesEnabled) {
+                                detectTapGestures(
+                                    onTap = {
+                                        wallpaperManager.sendWallpaperCommand(
+                                            view.windowToken,
+                                            WallpaperManager.COMMAND_TAP,
+                                            it.x.toInt(),
+                                            it.y.toInt(),
+                                            0,
+                                            null,
+                                        )
                                     }
-                                },
-                                onTap = {
-                                    wallpaperManager.sendWallpaperCommand(
-                                        view.windowToken,
-                                        WallpaperManager.COMMAND_TAP,
-                                        it.x.toInt(),
-                                        it.y.toInt(),
-                                        0,
-                                        null
-                                    )
-                                }
-                            )
+                                )
+                            }
                         }
                         .homePageAnimation(
                             state,
@@ -1472,12 +1528,15 @@ private fun SecondaryPage(
 
     val components = remember(config) {
         setOfNotNull(
+            config.tap?.component,
+            config.doubleTap?.component,
+            config.tripleTap?.component,
+            config.longPress?.component,
+            config.homeButton?.component,
             config.swipeUp?.component,
             config.swipeDown?.component,
             config.swipeLeft?.component,
             config.swipeRight?.component,
-            config.doubleTap?.component,
-            config.longPress?.component,
             config.searchComponent,
         )
     }

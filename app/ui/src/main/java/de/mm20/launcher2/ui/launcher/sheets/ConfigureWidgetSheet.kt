@@ -66,6 +66,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -117,6 +118,9 @@ import de.mm20.launcher2.widgets.AppsWidget
 import de.mm20.launcher2.widgets.CalendarWidget
 import de.mm20.launcher2.widgets.MusicWidget
 import de.mm20.launcher2.widgets.NotesWidget
+import de.mm20.launcher2.widgets.OrbBoardWidget
+import de.mm20.launcher2.widgets.OrbCalendarWidget
+import de.mm20.launcher2.widgets.OrbTrackerWidget
 import de.mm20.launcher2.widgets.WeatherWidget
 import de.mm20.launcher2.widgets.Widget
 import kotlinx.collections.immutable.toImmutableList
@@ -152,6 +156,8 @@ fun ConfigureWidgetSheet(
                 is AppsWidget -> ConfigureFavoritesWidget(widget, onWidgetUpdated)
                 is MusicWidget -> ConfigureMusicWidget(widget, onWidgetUpdated)
                 is NotesWidget -> ConfigureNotesWidget(widget, onWidgetUpdated)
+                // Orb feature widgets are configured through the feature's own screen.
+                is OrbCalendarWidget, is OrbBoardWidget, is OrbTrackerWidget -> Unit
             }
         }
 
@@ -688,6 +694,9 @@ fun ColumnScope.ConfigureAppWidget(
                     is CalendarWidget -> it.copy(id = widget.id)
                     is AppsWidget -> it.copy(id = widget.id)
                     is NotesWidget -> it.copy(id = widget.id)
+                    is OrbCalendarWidget -> it.copy(id = widget.id)
+                    is OrbBoardWidget -> it.copy(id = widget.id)
+                    is OrbTrackerWidget -> it.copy(id = widget.id)
                 }
                 onWidgetUpdated(updatedWidget)
                 replaceWidget = false
@@ -712,27 +721,44 @@ fun ColumnScope.ConfigureAppWidget(
                 mutableStateOf(widget.config.height.dp)
             }
 
-            AppWidgetHost(
-                widgetInfo = widgetInfo,
-                widgetId = widget.config.widgetId,
-                modifier = Modifier
-                    .clip(MaterialTheme.shapes.medium)
-                    .then(
-                        if (resizeWidth.isUnspecified) Modifier.fillMaxWidth()
-                        else Modifier.width(resizeWidth)
-                    )
-                    .height(resizeHeight)
-                    .align(Alignment.TopCenter)
-                    .pointerInput(Unit) {
+            var isResizing by remember { mutableStateOf(false) }
+
+            // Inflating an app widget's RemoteViews is expensive and would otherwise block the
+            // sheet's first frame, making the resize menu slow to appear. Defer it by one frame so
+            // the sheet shows up immediately; a sized placeholder keeps the layout stable.
+            var previewReady by remember { mutableStateOf(false) }
+            LaunchedEffect(widget.config.widgetId) {
+                withFrameNanos { }
+                previewReady = true
+            }
+
+            val previewModifier = Modifier
+                .clip(MaterialTheme.shapes.medium)
+                .then(
+                    if (resizeWidth.isUnspecified) Modifier.fillMaxWidth()
+                    else Modifier.width(resizeWidth)
+                )
+                .height(resizeHeight)
+                .align(Alignment.TopCenter)
+
+            if (previewReady) {
+                AppWidgetHost(
+                    widgetInfo = widgetInfo,
+                    widgetId = widget.config.widgetId,
+                    modifier = previewModifier.pointerInput(Unit) {
                         awaitEachGesture {
                             val event = awaitFirstDown(pass = PointerEventPass.Initial)
                             event.consume()
                         }
                     },
-                borderless = widget.config.borderless,
-                useThemeColors = widget.config.themeColors,
-                onLightBackground = (!LocalDarkTheme.current && widget.config.background) || LocalPreferDarkContentOverWallpaper.current
-            )
+                    borderless = widget.config.borderless,
+                    useThemeColors = widget.config.themeColors,
+                    onLightBackground = (!LocalDarkTheme.current && widget.config.background) || LocalPreferDarkContentOverWallpaper.current,
+                    isResizing = isResizing,
+                )
+            } else {
+                Box(modifier = previewModifier)
+            }
 
             val maxWidth = if (isAtLeastApiLevel(31)) {
                 widgetInfo.maxResizeWidth.takeIf { it > 0 }?.toDp() ?: Dp.Unspecified
@@ -764,10 +790,12 @@ fun ColumnScope.ConfigureAppWidget(
                 maxHeight = maxHeight,
                 snapToMeasuredWidth = true,
                 onResize = { w, h ->
+                    isResizing = true
                     resizeWidth = w
                     resizeHeight = h
                 },
                 onResizeStopped = {
+                    isResizing = false
                     onWidgetUpdated(
                         widget.copy(
                             config = widget.config.copy(

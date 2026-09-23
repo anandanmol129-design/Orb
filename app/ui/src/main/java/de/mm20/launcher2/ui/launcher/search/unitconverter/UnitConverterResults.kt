@@ -215,10 +215,6 @@ fun getDimensionIcon(dimension: Dimension): Int {
         Dimension.Area -> R.drawable.square_foot_24px
         Dimension.Currency -> R.drawable.payments_24px
         Dimension.Data -> R.drawable.hard_disk_24px
-        Dimension.Bitrate -> TODO()
-        Dimension.Pressure -> TODO()
-        Dimension.Energy -> R.drawable.bolt_24px
-        Dimension.Frequency -> TODO()
         Dimension.Temperature -> R.drawable.device_thermostat_24px
         Dimension.Time -> R.drawable.schedule_24px
     }

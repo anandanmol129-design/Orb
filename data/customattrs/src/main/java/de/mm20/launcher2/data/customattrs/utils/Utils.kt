@@ -12,8 +12,9 @@ fun <T: SavableSearchable>Flow<List<T>>.withCustomLabels(
     this@withCustomLabels.collectLatest { items ->
         val customLabels = customAttributesRepository.getCustomLabels(items)
         customLabels.collectLatest { labels ->
+            val labelsByKey = labels.associateBy { it.key }
             send(items.map { item ->
-                    val customLabel = labels.find { it.key == item.key }
+                    val customLabel = labelsByKey[item.key]
                     if (customLabel != null) {
                         item.overrideLabel(customLabel.label) as T
                     } else {

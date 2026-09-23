@@ -4,7 +4,6 @@ import de.mm20.launcher2.data.customattrs.CustomAttributesRepository
 import de.mm20.launcher2.searchable.SavableSearchableRepository
 import de.mm20.launcher2.search.SavableSearchable
 import de.mm20.launcher2.search.Tag
-import de.mm20.launcher2.searchable.PinnedLevel
 import de.mm20.launcher2.services.tags.TagsService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

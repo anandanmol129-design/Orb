@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import de.mm20.launcher2.ui.R
 import kotlin.math.round
 
+private val ratingFormat = ThreadLocal.withInitial { DecimalFormat("#.0") }
+
 /**
  * A star rating bar that displays a rating from 0 to 5 stars.
  * @param rating in the range of 0..1
@@ -65,7 +67,7 @@ fun RatingBar(
         }
         Text(
             modifier = Modifier.padding(start = 4.dp),
-            text = DecimalFormat("#.0").format(starRating / 2) +
+            text = ratingFormat.get().format(starRating / 2) +
                     if (ratingCount == null) "" else " ($ratingCount)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant

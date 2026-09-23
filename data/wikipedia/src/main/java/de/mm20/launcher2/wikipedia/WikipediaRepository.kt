@@ -50,7 +50,7 @@ internal class WikipediaRepository(
 
         val page = result.query?.pages?.values?.toList()?.getOrNull(0) ?: return null
 
-        val image = result.query.pages.values.toList().getOrNull(0)?.thumbnail?.source
+        val image = page.thumbnail?.source
 
         return Wikipedia(
             label = page.title,

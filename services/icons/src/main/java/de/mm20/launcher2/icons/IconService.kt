@@ -50,10 +50,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMap
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -167,13 +164,21 @@ class IconService(
     }
 
     fun resolveCustomIcon(searchable: SavableSearchable, size: Int, customIcon: CustomIcon?): Flow<LauncherIcon?> {
+        // DefaultPlaceholderIcon resolves against the live provider chain, so its providers
+        // must keep being computed per emission and cannot be hoisted here.
+        val hoistedProviders =
+            if (customIcon != null && customIcon !is DefaultPlaceholderIcon) getProviders(customIcon)
+            else null
         return combine(iconProviders, transformations) { providers, transformations ->
-            var icon: LauncherIcon? = cache.get(searchable.key + customIcon.hashCode() + providers.hashCode() + transformations.hashCode())
+            val cacheKey =
+                searchable.key + customIcon.hashCode() + providers.hashCode() + transformations.hashCode()
+            var icon: LauncherIcon? = cache.get(cacheKey)
             if (icon != null) {
                 return@combine icon
             }
 
-            val provs = if (customIcon != null) getProviders(customIcon) + providers else providers
+            val customProviders = hoistedProviders ?: getProviders(customIcon)
+            val provs = if (customProviders.isEmpty()) providers else customProviders + providers
             val transforms = getTransformations(customIcon) ?: transformations
 
             icon = provs.getFirstIcon(searchable, size)
@@ -181,7 +186,7 @@ class IconService(
             if (icon != null) {
                 icon = icon.transform(transforms)
 
-                cache.put(searchable.key + customIcon.hashCode() + providers.hashCode() + transformations.hashCode(), icon)
+                cache.put(cacheKey, icon)
             }
             return@combine icon
         }

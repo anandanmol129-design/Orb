@@ -19,13 +19,12 @@ class FailedGestureSheetVM : ViewModel(), KoinComponent {
     }
 
     fun disableGesture(gesture: Gesture) {
-        when(gesture) {
+        when (gesture) {
+            Gesture.Tap -> gestureSettings.setTap(GestureAction.NoAction)
             Gesture.DoubleTap -> gestureSettings.setDoubleTap(GestureAction.NoAction)
+            Gesture.TripleTap -> gestureSettings.setTripleTap(GestureAction.NoAction)
             Gesture.LongPress -> gestureSettings.setLongPress(GestureAction.NoAction)
-            Gesture.SwipeDown -> gestureSettings.setSwipeDown(GestureAction.NoAction)
-            Gesture.SwipeLeft -> gestureSettings.setSwipeLeft(GestureAction.NoAction)
-            Gesture.SwipeRight -> gestureSettings.setSwipeRight(GestureAction.NoAction)
-            //Gesture.HomeButton -> gestureSettings.setHomeButton(GestureAction.NoAction)
+            Gesture.HomeButton -> gestureSettings.setHomeButton(GestureAction.NoAction)
             else -> {}
         }
     }

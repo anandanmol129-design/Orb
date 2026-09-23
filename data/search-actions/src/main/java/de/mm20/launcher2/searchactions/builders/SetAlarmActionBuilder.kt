@@ -6,7 +6,6 @@ import de.mm20.launcher2.searchactions.TextClassificationResult
 import de.mm20.launcher2.searchactions.actions.SearchAction
 import de.mm20.launcher2.searchactions.actions.SearchActionIcon
 import de.mm20.launcher2.searchactions.actions.SetAlarmAction
-import java.time.LocalDate
 
 class SetAlarmActionBuilder(
     override val label: String

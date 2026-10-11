@@ -363,6 +363,7 @@ enum class WallpaperType {
     SolarSystem,
     Boids,
     DoublePendulum,
+    Games,
 }
 
 @Serializable

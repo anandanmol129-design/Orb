@@ -195,6 +195,7 @@ fun HomescreenSettingsScreen() {
                         stringResource(R.string.preference_wallpaper_type_solar_system) to WallpaperType.SolarSystem,
                         stringResource(R.string.preference_wallpaper_type_boids) to WallpaperType.Boids,
                         stringResource(R.string.preference_wallpaper_type_double_pendulum) to WallpaperType.DoublePendulum,
+                        stringResource(R.string.preference_wallpaper_type_games) to WallpaperType.Games,
                     ),
                     onValueChanged = {
                         viewModel.setWallpaperType(it)

@@ -1354,9 +1354,9 @@ internal fun LauncherScaffold(
                             // feed them the pointer here (an ancestor of every home hit).
                             awaitPointerEventScope {
                                 while (true) {
-                                    val e = awaitPointerEvent(PointerEventPass.Initial)
+                                    val e = awaitPointerEvent(PointerEventPass.Final)
                                     val c = e.changes.firstOrNull() ?: continue
-                                    WallpaperPointer.set(c.position, c.pressed)
+                                    WallpaperPointer.set(c.position, c.pressed, c.isConsumed)
                                 }
                             }
                         }

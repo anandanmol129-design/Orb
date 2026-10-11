@@ -24,9 +24,12 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toArgb
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.math.abs
 import kotlin.math.atan
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -70,9 +73,8 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
         val diag = hypot(w, h)
         aim.center = center
 
-        // Prism triangle, apex up, leaning slightly and tumbling at SPIN_RPM about the centre;
-        // the beam entry and fan bend below read the rotated faces, so they sweep with it.
-        val tilt = -6f * DEG + SPIN_RATE * ((timeNanos.value % SPIN_PERIOD_NS) / 1_000_000_000f)
+        // Keep the prism in a fixed pose; the ray and fan still respond to touch.
+        val tilt = -6f * DEG
         val top = rot(Offset(-0.02f, -1.0f) * unit, tilt)
         val bottomLeft = rot(Offset(-0.95f, 0.62f) * unit, tilt)
         val bottomRight = rot(Offset(0.95f, 0.58f) * unit, tilt)
@@ -107,9 +109,6 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
         // reuses them.
         fan.ensure(w, h)
         fan.updateColors(t)
-        withTransform({ rotate(-aim.fanAngle / DEG, center) }) {
-            fan.draw(this, center, 1f)
-        }
         drawFanReflections(fan, center, aim.fanAngle, w, h)
 
         // Wide bloom wash along the fan axis.
@@ -140,13 +139,6 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
 private val DEG = (Math.PI / 180.0).toFloat()
 private const val BEND_DEG = 14.5f
 
-/** The prism tumbles about its centre at this rate: 10 rpm is one turn every 6 s. */
-private const val SPIN_RPM = 10f
-private val SPIN_RATE = SPIN_RPM * 6f * DEG // rad/s (6°/s per rpm ≈ 1.047 rad/s at 10 rpm)
-private val SPIN_PERIOD_NS = (60.0 / SPIN_RPM * 1e9).toLong()
-// The spin phase is folded mod one turn in a Long first, so long clock uptimes cannot quantise
-// the rotation into visible steps.
-
 /**
  * Pointer state from the launcher's hit chain. Wallpaper layers sit behind the home component,
  * which fills the screen, so they never join a hit path themselves; the scaffold's home root
@@ -159,15 +151,39 @@ object WallpaperPointer {
     var y = 0f
     @Volatile
     var pressed = false
+    @Volatile
+    var consumed = false
 
-    fun set(pos: Offset, isPressed: Boolean) {
+    private var activeGestureStart: Offset? = null
+    private var activeGestureConsumed = false
+    private val gestureFlow = MutableSharedFlow<WallpaperGesture>(extraBufferCapacity = 16)
+    internal val gestures = gestureFlow.asSharedFlow()
+
+    fun set(pos: Offset, isPressed: Boolean, isConsumed: Boolean = false) {
+        if (isPressed) {
+            if (!pressed) {
+                activeGestureStart = pos
+                activeGestureConsumed = isConsumed
+            } else if (isConsumed) {
+                activeGestureConsumed = true
+            }
+        } else if (pressed) {
+            if (isConsumed) activeGestureConsumed = true
+            val start = activeGestureStart
+            if (start != null) gestureFlow.tryEmit(WallpaperGesture(start, pos, activeGestureConsumed))
+            activeGestureStart = null
+            activeGestureConsumed = false
+        }
         x = pos.x
         y = pos.y
         pressed = isPressed
+        consumed = isConsumed
     }
 }
 
-/** Tracks where the beam comes from; eases back to the reference pose (-10, -.05) on release. */
+internal data class WallpaperGesture(val start: Offset, val end: Offset, val consumed: Boolean)
+
+/** Tracks where the beam comes from and holds the last aimed direction on release. */
 private class PrismAim {
     var center = Offset.Zero
     var dir = DEFAULT_DIR
@@ -181,10 +197,8 @@ private class PrismAim {
 
     /** The light aims from outside the screen toward the prism, tracking the finger live. */
     fun update(dt: Float) {
-        target = if (WallpaperPointer.pressed && center != Offset.Zero) {
-            normalize(Offset(WallpaperPointer.x, WallpaperPointer.y) - center)
-        } else {
-            DEFAULT_DIR
+        if (WallpaperPointer.pressed && center != Offset.Zero) {
+            target = normalize(Offset(WallpaperPointer.x, WallpaperPointer.y) - center)
         }
         val s = 1f - exp(-dt * 24f) // ~40 ms: real-time follow with a touch of smoothing
         dir = normalize(dir + (target - dir) * s)
@@ -311,6 +325,9 @@ private const val UV_Y0 = 0.03f
 private const val UV_Y1 = 1.12f
 private const val NK = 97
 private const val NR = 26
+// Give the existing fan enough spatial reach to cross several mirrored screen cells. This scales
+// only the mesh positions; the diffraction and spectrum calculations remain unchanged.
+private const val FAN_PATH_REACH = 2.5f
 
 /**
  * The fan as a single triangle mesh with per-vertex colours straight from the reference shader
@@ -347,7 +364,7 @@ private class FanMesh {
         if (w == cachedW && h == cachedH) return
         cachedW = w
         cachedH = h
-        val q = hypot(w, h) + 1.5f * minOf(w, h) / 7.5f
+        val q = (hypot(w, h) + 1.5f * minOf(w, h) / 7.5f) * FAN_PATH_REACH
         reach = UV_Y1 * q / 2f
         halfSpread = atan(K_MAX * UV_Y1 / 2f)
         for (i in 0 until NK) {
@@ -397,9 +414,8 @@ private class FanMesh {
     }
 
     /**
-     * Draw the fan at [center] at [brightness]: 1 for the unreflected fan, [WALL_REFLECT] per
-     * bounce for a mirror copy. The Plus blend scales the vertex colours with the paint alpha,
-     * so this is one drawVertices call per copy over the shared mesh and colours.
+     * Draw the fan at [center] at [brightness]. The Plus blend scales the vertex colours with
+     * the paint alpha, so this is one drawVertices call per copy over the shared mesh and colours.
      */
     fun draw(scope: DrawScope, center: Offset, brightness: Float) {
         val mesh = vertices ?: return
@@ -450,25 +466,9 @@ private class FanMesh {
 
 /* -------------------------------- fan mirrors -------------------------------- */
 
-// Bounce bookkeeping for the fan's hall of mirrors at the screen edges.
-private const val MAX_BOUNCES = 10
-private const val WALL_REFLECT = 0.9f
-
-// The screen edges, as mirrors for the fan.
-private const val WALL_L = 0
-private const val WALL_R = 1
-private const val WALL_T = 2
-private const val WALL_B = 3
-
 /**
- * The screen is a hall of mirrors for the rainbow fan: the wedge that leaves through an edge
- * comes back in as its mirror image across that edge, [WALL_REFLECT] darker per bounce and
- * completely absorbed past [MAX_BOUNCES]. Copies are walked depth-first from the unreflected fan,
- * never back across the wall just crossed (that only undoes the bounce), and a branch is dropped
- * whole the moment its mirrored wedge cannot reach the screen: light that never re-enters the
- * room cannot bounce again. Each copy is the regular fan draw under the composed edge
- * reflections, clipped to the screen - only the spill back across the edge shows, never the
- * mirrored apex outside it. The unreflected fan is drawn separately and unclipped.
+ * Draw the finite set of mirrored images whose fan wedges can reach the screen. Image tiles are
+ * enumerated directly so multiple bounces cannot create recursive loops or duplicate paths.
  */
 private fun DrawScope.drawFanReflections(
     fan: FanMesh,
@@ -477,56 +477,27 @@ private fun DrawScope.drawFanReflections(
     w: Float,
     h: Float,
 ) {
-    reflectFan(fan, center, fanAngle, w, h, -1, 1, 0f, 0f, 1, WALL_REFLECT, WALL_L)
-    reflectFan(fan, center, fanAngle, w, h, -1, 1, 2f * w, 0f, 1, WALL_REFLECT, WALL_R)
-    reflectFan(fan, center, fanAngle, w, h, 1, -1, 0f, 0f, 1, WALL_REFLECT, WALL_T)
-    reflectFan(fan, center, fanAngle, w, h, 1, -1, 0f, 2f * h, 1, WALL_REFLECT, WALL_B)
-}
+    val maxTileX = ceil(fan.reach / w).toInt() + 1
+    val maxTileY = ceil(fan.reach / h).toInt() + 1
+    for (tileY in -maxTileY..maxTileY) {
+        val sy = if (tileY % 2 == 0) 1 else -1
+        val by = if (sy == 1) tileY * h else (tileY + 1) * h
+        for (tileX in -maxTileX..maxTileX) {
+            val sx = if (tileX % 2 == 0) 1 else -1
+            val bx = if (sx == 1) tileX * w else (tileX + 1) * w
+            val imageCenter = Offset(sx * center.x + bx, sy * center.y + by)
+            val imageAxis = Offset(sx * cos(fanAngle), -sy * sin(fanAngle))
+            if (!fan.wedgeReachesScreen(imageCenter, imageAxis)) continue
 
-/**
- * One mirror image of the fan after [depth] bounces: the fan mapped by (x, y) -> (sx * x + bx,
- * sy * y + by), a composition of reflections across screen edges. [fromWall] is the edge whose
- * reflection produced this image; children reflect across the other three.
- */
-private fun DrawScope.reflectFan(
-    fan: FanMesh,
-    center: Offset,
-    fanAngle: Float,
-    w: Float,
-    h: Float,
-    sx: Int,
-    sy: Int,
-    bx: Float,
-    by: Float,
-    depth: Int,
-    brightness: Float,
-    fromWall: Int,
-) {
-    if (!fan.wedgeReachesScreen(
-            Offset(sx * center.x + bx, sy * center.y + by),
-            Offset(sx * cos(fanAngle), -sy * sin(fanAngle)),
-        )
-    ) return
-
-    clipRect(0f, 0f, w, h) {
-        translate(bx, by) {
-            scale(sx.toFloat(), sy.toFloat(), Offset.Zero) {
-                withTransform({ rotate(-fanAngle / DEG, center) }) {
-                    fan.draw(this, center, brightness)
+            clipRect(0f, 0f, w, h) {
+                translate(bx, by) {
+                    scale(sx.toFloat(), sy.toFloat(), Offset.Zero) {
+                        withTransform({ rotate(-fanAngle / DEG, center) }) {
+                            fan.draw(this, center, 1f)
+                        }
+                    }
                 }
             }
-        }
-    }
-
-    if (depth >= MAX_BOUNCES) return // the mirrors absorb everything past the tenth bounce
-    val next = brightness * WALL_REFLECT
-    for (wall in WALL_L..WALL_B) {
-        if (wall == fromWall) continue // reflecting back across the wall just crossed undoes it
-        when (wall) {
-            WALL_L -> reflectFan(fan, center, fanAngle, w, h, -sx, sy, -bx, by, depth + 1, next, wall)
-            WALL_R -> reflectFan(fan, center, fanAngle, w, h, -sx, sy, 2f * w - bx, by, depth + 1, next, wall)
-            WALL_T -> reflectFan(fan, center, fanAngle, w, h, sx, -sy, bx, -by, depth + 1, next, wall)
-            else -> reflectFan(fan, center, fanAngle, w, h, sx, -sy, bx, 2f * h - by, depth + 1, next, wall)
         }
     }
 }

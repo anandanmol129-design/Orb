@@ -43,6 +43,7 @@ import de.mm20.launcher2.searchable.VisibilityLevel
 import de.mm20.launcher2.searchactions.actions.SearchAction
 import de.mm20.launcher2.services.favorites.FavoritesService
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -168,6 +170,16 @@ class SearchVM : ViewModel(), KoinComponent {
     }
 
     private var searchJob: Job? = null
+
+    fun pauseSearch() {
+        searchJob?.cancel()
+        searchJob = null
+    }
+
+    fun resumeSearch() {
+        search(searchQuery.value, forceRestart = true)
+    }
+
     fun search(query: String, forceRestart: Boolean = false) {
         if (searchQuery.value == query && !forceRestart) return
         if (searchQuery.value != query) {
@@ -410,30 +422,30 @@ class SearchVM : ViewModel(), KoinComponent {
 
     private suspend fun <T : SavableSearchable> List<T>.applyRanking(query: String): List<T> {
         if (size <= 1) return this
-        val sequence = asSequence()
         val weights = searchableRepository.getWeights(map { it.key }).first()
-        val sorted = sequence.sortedWith { a, b ->
-            val aWeight = weights[a.key] ?: 0.0
-            val bWeight = weights[b.key] ?: 0.0
+        return withContext(Dispatchers.Default) {
+            sortedWith { a, b ->
+                val aWeight = weights[a.key] ?: 0.0
+                val bWeight = weights[b.key] ?: 0.0
 
-            val aScore = if (a.score.isUnspecified) {
-                ResultScore.from(query = query, primaryFields = listOf(a.labelOverride ?: a.label)).score
-            } else {
-                a.score.score
-            }
+                val aScore = if (a.score.isUnspecified) {
+                    ResultScore.from(query = query, primaryFields = listOf(a.labelOverride ?: a.label)).score
+                } else {
+                    a.score.score
+                }
 
-            val bScore = if (b.score.isUnspecified) {
-                ResultScore.from(query = query, primaryFields = listOf(b.labelOverride ?: b.label)).score
-            } else {
-                b.score.score
-            }
+                val bScore = if (b.score.isUnspecified) {
+                    ResultScore.from(query = query, primaryFields = listOf(b.labelOverride ?: b.label)).score
+                } else {
+                    b.score.score
+                }
 
-            val aTotal = aScore * 0.6f + aWeight.toFloat() * 0.4f
-            val bTotal = bScore * 0.6f + bWeight.toFloat() * 0.4f
+                val aTotal = aScore * 0.6f + aWeight.toFloat() * 0.4f
+                val bTotal = bScore * 0.6f + bWeight.toFloat() * 0.4f
 
-            bTotal.compareTo(aTotal)
+                bTotal.compareTo(aTotal)
+            }.distinctBy { it.key }
         }
-        return sorted.distinctBy { it.key }.toList()
     }
 
     /**

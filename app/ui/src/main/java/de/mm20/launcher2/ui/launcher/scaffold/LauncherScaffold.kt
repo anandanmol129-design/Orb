@@ -109,6 +109,7 @@ import de.mm20.launcher2.ui.launcher.scaffold.animation.ScaffoldAnimationControl
 import de.mm20.launcher2.ui.launcher.scaffold.animation.ZoomInScaffoldAnimationController
 import de.mm20.launcher2.ui.launcher.scaffold.components.ScaffoldComponent
 import de.mm20.launcher2.ui.launcher.scaffold.components.SearchComponent
+import de.mm20.launcher2.ui.launcher.scaffold.components.WidgetsComponent
 import de.mm20.launcher2.ui.launcher.search.SearchVM
 import de.mm20.launcher2.ui.launcher.search.filters.KeyboardFilterBar
 import de.mm20.launcher2.ui.launcher.searchbar.LauncherSearchBar
@@ -638,6 +639,11 @@ internal class LauncherScaffoldState(
                 size = size,
             )
         }
+        val widgetsComponent = gesture.component as? WidgetsComponent
+        if (targetPage == ScaffoldPage.Secondary && widgetsComponent != null && !widgetsComponent.isInitialContentReady) {
+            animateOffset3DTo(Offset3D.Zero, animationSpec = tween(120))
+            widgetsComponent.awaitInitialContentReady()
+        }
         isSettledOnSecondaryPage = targetPage == ScaffoldPage.Secondary
 
         val targetOffset = controller.calculateTargetOffset(
@@ -668,6 +674,10 @@ internal class LauncherScaffoldState(
                 animateOffset3DTo(
                     target = settleTarget,
                     initialVelocity = Offset3D(velocity.x, velocity.y, 0f),
+                    animationSpec = if (
+                        targetPage == ScaffoldPage.Secondary &&
+                        (gesture.component is SearchComponent || gesture.component is WidgetsComponent)
+                    ) tween(100) else spring(),
                 )
             }
         } else {
@@ -841,7 +851,7 @@ internal class LauncherScaffoldState(
         transitionToPage(ScaffoldPage.Secondary, component) {
             animateOffset3DTo(
                 Offset3D(z = 1f),
-                animationSpec = tween(300),
+                animationSpec = tween(if (component is WidgetsComponent) 180 else if (component is SearchComponent) 100 else 300),
             )
             isSettledOnSecondaryPage = true
         }
@@ -852,6 +862,10 @@ internal class LauncherScaffoldState(
         component: ScaffoldComponent,
         animate: suspend () -> Unit,
     ) = withContext(NonCancellable) {
+        if (targetPage == ScaffoldPage.Secondary && component is WidgetsComponent) {
+            component.awaitInitialContentReady()
+        }
+
         when (targetPage) {
             ScaffoldPage.Secondary -> {
                 config.homeComponent.onPreDismiss(this@LauncherScaffoldState)
@@ -898,7 +912,7 @@ internal class LauncherScaffoldState(
         transitionToPage(ScaffoldPage.Secondary, component) {
             animateOffset3DTo(
                 Offset3D(z = 1f),
-                animationSpec = tween(300),
+                animationSpec = tween(if (component is WidgetsComponent) 180 else if (component is SearchComponent) 100 else 300),
             )
             isSettledOnSecondaryPage = true
         }

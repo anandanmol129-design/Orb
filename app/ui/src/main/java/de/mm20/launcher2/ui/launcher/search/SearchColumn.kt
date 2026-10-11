@@ -63,6 +63,7 @@ import de.mm20.launcher2.ui.theme.transparency.transparency
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.zip
+import kotlinx.coroutines.awaitCancellation
 
 @Composable
 fun SearchColumn(
@@ -80,6 +81,17 @@ fun SearchColumn(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val viewModel: SearchVM = viewModel()
+
+    LaunchedEffect(viewModel, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.resumeSearch()
+            try {
+                awaitCancellation()
+            } finally {
+                viewModel.pauseSearch()
+            }
+        }
+    }
 
     val favoritesVM: SearchFavoritesVM = viewModel()
     val favorites by favoritesVM.favorites.collectAsState(emptyList())

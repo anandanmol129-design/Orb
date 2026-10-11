@@ -8,7 +8,9 @@ import de.mm20.launcher2.database.entities.WidgetEntity
 import de.mm20.launcher2.ktx.jsonObjectOf
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
 import org.json.JSONArray
 import org.json.JSONException
 import java.io.File
@@ -38,7 +40,7 @@ internal class WidgetRepositoryImpl(
             dao.queryByParent(parent, limit, offset)
         }.map {
             it.mapNotNull { Widget.fromDatabaseEntity(it) }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     override fun update(widget: Widget) {

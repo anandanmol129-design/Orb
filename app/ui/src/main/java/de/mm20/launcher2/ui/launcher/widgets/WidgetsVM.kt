@@ -9,14 +9,18 @@ import de.mm20.launcher2.preferences.ui.UiSettings
 import de.mm20.launcher2.widgets.Widget
 import de.mm20.launcher2.widgets.WidgetRepository
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 class WidgetsVM(
     private val parentId: UUID?,
 ) : ViewModel(), KoinComponent {
+    private val cacheKey = parentId?.toString() ?: "root"
     private val widgetRepository: WidgetRepository by inject()
 
     private val uiSettings: UiSettings by inject()
@@ -24,8 +28,19 @@ class WidgetsVM(
     val editButton = uiSettings.widgetEditButton
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
 
-    val widgets = widgetRepository.get(parent = parentId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+    private val _widgets = MutableStateFlow(cachedWidgets[cacheKey] ?: emptyList())
+    val widgets = _widgets.asStateFlow()
+    val isLoaded = MutableStateFlow(cachedWidgets.containsKey(cacheKey))
+
+    init {
+        viewModelScope.launch {
+            widgetRepository.get(parent = parentId).collect { updatedWidgets ->
+                cachedWidgets[cacheKey] = updatedWidgets
+                _widgets.value = updatedWidgets
+                isLoaded.value = true
+            }
+        }
+    }
 
     fun addWidget(widget: Widget, index: Int? = null) {
         val widgets = widgets.value.toMutableList()
@@ -60,6 +75,8 @@ class WidgetsVM(
     }
 
     companion object : KoinComponent {
+        private val cachedWidgets = java.util.concurrent.ConcurrentHashMap<String, List<Widget>>()
+
         fun Factory(parentId: String) = viewModelFactory {
             initializer {
                 val id = try {

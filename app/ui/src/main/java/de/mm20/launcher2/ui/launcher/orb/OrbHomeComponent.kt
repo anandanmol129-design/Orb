@@ -56,7 +56,6 @@ import de.mm20.launcher2.preferences.WidgetScreenTarget
 import de.mm20.launcher2.preferences.ui.GestureSettings
 import de.mm20.launcher2.ui.launcher.scaffold.Gesture
 import de.mm20.launcher2.ui.launcher.scaffold.LauncherScaffoldState
-import de.mm20.launcher2.ui.features.orb.OrbFeaturesActivity
 import de.mm20.launcher2.ui.launcher.scaffold.components.ScaffoldComponent
 import de.mm20.launcher2.ui.settings.orb.OrbSettingsActivity
 import de.mm20.launcher2.ui.launcher.scaffold.components.WidgetsComponent
@@ -232,20 +231,6 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         PieActionType.Edit -> {
                             editMode = true
                             openFolders = emptyList()
-                        }
-
-                        PieActionType.Calendar,
-                        PieActionType.Board,
-                        PieActionType.Tracker -> {
-                            val tab = when (item.type) {
-                                PieActionType.Calendar -> OrbFeaturesActivity.TAB_CALENDAR
-                                PieActionType.Board -> OrbFeaturesActivity.TAB_BOARD
-                                else -> OrbFeaturesActivity.TAB_TRACKER
-                            }
-                            context.startActivity(
-                                android.content.Intent(context, OrbFeaturesActivity::class.java)
-                                    .putExtra(OrbFeaturesActivity.EXTRA_TAB, tab)
-                            )
                         }
                     }
                 }

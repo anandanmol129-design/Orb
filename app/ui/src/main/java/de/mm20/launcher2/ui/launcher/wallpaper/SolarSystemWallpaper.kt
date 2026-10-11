@@ -25,6 +25,7 @@ import kotlin.random.Random
 private const val GM = 1.1e-3
 private const val TIME_SCALE = 5.0
 private const val WALL_BOUNCE = 0.75
+private const val BODY_BOUNCE = 0.75
 
 private val SunColor = Color(0xFFFFD889)
 
@@ -102,6 +103,44 @@ private class SolarSystem {
                 p.vy += ay * h
                 p.x += p.vx * h
                 p.y += p.vy * h
+            }
+            resolveCollisions(dragged)
+        }
+    }
+
+    /** Body-to-body collisions: separate overlaps, then bounce approaching pairs apart. */
+    private fun resolveCollisions(dragged: Body?) {
+        for (i in bodies.indices) {
+            val a = bodies[i]
+            for (j in i + 1 until bodies.size) {
+                val b = bodies[j]
+                val ra = (a.visualRadius / 0.62f).toDouble()
+                val rb = (b.visualRadius / 0.62f).toDouble()
+                val dx = b.x - a.x
+                val dy = b.y - a.y
+                val dist = sqrt(dx * dx + dy * dy)
+                val overlap = ra + rb - dist
+                if (overlap <= 0.0) continue
+                // Unit normal from a to b; fixed axis for degenerate zero-distance contact.
+                val nx = if (dist > 1e-12) dx / dist else 1.0
+                val ny = if (dist > 1e-12) dy / dist else 0.0
+                // Shaded spheres: mass proportional to radius cubed; dragged body is immovable.
+                val invMassA = if (a === dragged) 0.0 else 1.0 / (ra * ra * ra)
+                val invMassB = if (b === dragged) 0.0 else 1.0 / (rb * rb * rb)
+                val invSum = invMassA + invMassB
+                if (invSum <= 0.0) continue
+                a.x -= nx * (overlap * invMassA / invSum)
+                a.y -= ny * (overlap * invMassA / invSum)
+                b.x += nx * (overlap * invMassB / invSum)
+                b.y += ny * (overlap * invMassB / invSum)
+                val vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny
+                if (vn < 0.0) {
+                    val impulse = -(1.0 + BODY_BOUNCE) * vn / invSum
+                    a.vx -= impulse * invMassA * nx
+                    a.vy -= impulse * invMassA * ny
+                    b.vx += impulse * invMassB * nx
+                    b.vy += impulse * invMassB * ny
+                }
             }
         }
     }

@@ -118,9 +118,6 @@ import de.mm20.launcher2.widgets.AppsWidget
 import de.mm20.launcher2.widgets.CalendarWidget
 import de.mm20.launcher2.widgets.MusicWidget
 import de.mm20.launcher2.widgets.NotesWidget
-import de.mm20.launcher2.widgets.OrbBoardWidget
-import de.mm20.launcher2.widgets.OrbCalendarWidget
-import de.mm20.launcher2.widgets.OrbTrackerWidget
 import de.mm20.launcher2.widgets.WeatherWidget
 import de.mm20.launcher2.widgets.Widget
 import kotlinx.collections.immutable.toImmutableList
@@ -156,8 +153,6 @@ fun ConfigureWidgetSheet(
                 is AppsWidget -> ConfigureFavoritesWidget(widget, onWidgetUpdated)
                 is MusicWidget -> ConfigureMusicWidget(widget, onWidgetUpdated)
                 is NotesWidget -> ConfigureNotesWidget(widget, onWidgetUpdated)
-                // Orb feature widgets are configured through the feature's own screen.
-                is OrbCalendarWidget, is OrbBoardWidget, is OrbTrackerWidget -> Unit
             }
         }
 
@@ -694,9 +689,6 @@ fun ColumnScope.ConfigureAppWidget(
                     is CalendarWidget -> it.copy(id = widget.id)
                     is AppsWidget -> it.copy(id = widget.id)
                     is NotesWidget -> it.copy(id = widget.id)
-                    is OrbCalendarWidget -> it.copy(id = widget.id)
-                    is OrbBoardWidget -> it.copy(id = widget.id)
-                    is OrbTrackerWidget -> it.copy(id = widget.id)
                 }
                 onWidgetUpdated(updatedWidget)
                 replaceWidget = false

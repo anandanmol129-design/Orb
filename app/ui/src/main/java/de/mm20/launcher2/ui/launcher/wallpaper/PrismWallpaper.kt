@@ -17,12 +17,15 @@ import androidx.compose.ui.graphics.VertexMode
 import androidx.compose.ui.graphics.Vertices
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toArgb
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
+import kotlin.math.atan
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
@@ -67,8 +70,9 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
         val diag = hypot(w, h)
         aim.center = center
 
-        // Prism triangle, apex up, leaning slightly.
-        val tilt = -6f * DEG
+        // Prism triangle, apex up, leaning slightly and tumbling at SPIN_RPM about the centre;
+        // the beam entry and fan bend below read the rotated faces, so they sweep with it.
+        val tilt = -6f * DEG + SPIN_RATE * ((timeNanos.value % SPIN_PERIOD_NS) / 1_000_000_000f)
         val top = rot(Offset(-0.02f, -1.0f) * unit, tilt)
         val bottomLeft = rot(Offset(-0.95f, 0.62f) * unit, tilt)
         val bottomRight = rot(Offset(0.95f, 0.58f) * unit, tilt)
@@ -98,11 +102,15 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
             center = center,
         )
 
-        // The rainbow fan; its apex hides behind the prism drawn on top of it.
+        // The rainbow fan and its hall of mirrors at the screen edges; the apex hides behind
+        // the prism drawn on top of it. Colours are evaluated once here and every copy below
+        // reuses them.
         fan.ensure(w, h)
+        fan.updateColors(t)
         withTransform({ rotate(-aim.fanAngle / DEG, center) }) {
-            fan.draw(this, center, t)
+            fan.draw(this, center, 1f)
         }
+        drawFanReflections(fan, center, aim.fanAngle, w, h)
 
         // Wide bloom wash along the fan axis.
         val axis = Offset(cos(aim.fanAngle), -sin(aim.fanAngle))
@@ -131,6 +139,13 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
 
 private val DEG = (Math.PI / 180.0).toFloat()
 private const val BEND_DEG = 14.5f
+
+/** The prism tumbles about its centre at this rate: 10 rpm is one turn every 6 s. */
+private const val SPIN_RPM = 10f
+private val SPIN_RATE = SPIN_RPM * 6f * DEG // rad/s (6°/s per rpm ≈ 1.047 rad/s at 10 rpm)
+private val SPIN_PERIOD_NS = (60.0 / SPIN_RPM * 1e9).toLong()
+// The spin phase is folded mod one turn in a Long first, so long clock uptimes cannot quantise
+// the rotation into visible steps.
 
 /**
  * Pointer state from the launcher's hit chain. Wallpaper layers sit behind the home component,
@@ -198,6 +213,15 @@ private fun normalize(o: Offset): Offset {
 
 /** Angle of [o] in a y-up frame, radians. */
 private fun angleUp(o: Offset): Float = atan2(-o.y, o.x)
+
+/** [a] in radians, wrapped to (-π, π]. */
+private fun wrapPi(a: Float): Float {
+    val turn = 360f * DEG
+    var x = a
+    while (x > 180f * DEG) x -= turn
+    while (x <= -180f * DEG) x += turn
+    return x
+}
 
 /* -------------------------------- fan colouring -------------------------------- */
 
@@ -291,7 +315,8 @@ private const val NR = 26
 /**
  * The fan as a single triangle mesh with per-vertex colours straight from the reference shader
  * formula, so the blob field interpolates smoothly (as in the reference) instead of through
- * gradient stops. Only the colour array depends on flow time.
+ * gradient stops. Colour evaluation is split out in [updateColors] and runs once per frame; every
+ * mirror copy then just runs [draw] over the same mesh and colour array.
  */
 private class FanMesh {
     private val count = NK * NR
@@ -306,15 +331,25 @@ private class FanMesh {
     }
     private val kValues = FloatArray(NK)
     private val uvYValues = FloatArray(NR)
+    private val cornerAngles = FloatArray(4)
     private val paint = androidx.compose.ui.graphics.Paint()
+    private var vertices: Vertices? = null
     private var cachedW = -1f
     private var cachedH = -1f
+
+    /** Reach of the fan wedge from its apex along the fan axis, and the wedge half-angle. */
+    var reach = 0f
+        private set
+    var halfSpread = 0f
+        private set
 
     fun ensure(w: Float, h: Float) {
         if (w == cachedW && h == cachedH) return
         cachedW = w
         cachedH = h
         val q = hypot(w, h) + 1.5f * minOf(w, h) / 7.5f
+        reach = UV_Y1 * q / 2f
+        halfSpread = atan(K_MAX * UV_Y1 / 2f)
         for (i in 0 until NK) {
             val k = -K_MAX + 2f * K_MAX * i / (NK - 1)
             kValues[i] = k
@@ -344,24 +379,154 @@ private class FanMesh {
         }
     }
 
-    fun draw(scope: DrawScope, center: Offset, t: Float) {
+    /** Rebuild the flowing vertex colours for flow time [t]; once per frame, shared by copies. */
+    fun updateColors(t: Float) {
         for (i in 0 until NK) {
             val k = kValues[i]
             for (j in 0 until NR) {
                 argb[i * NR + j] = Spectrum.fanColor(k, uvYValues[j], t).toArgb()
             }
         }
-        val vertices = Vertices(
+        vertices = Vertices(
             vertexMode = VertexMode.Triangles,
             positions = points,
             textureCoordinates = texCoords,
             colors = colorView,
             indices = indexList,
         )
+    }
+
+    /**
+     * Draw the fan at [center] at [brightness]: 1 for the unreflected fan, [WALL_REFLECT] per
+     * bounce for a mirror copy. The Plus blend scales the vertex colours with the paint alpha,
+     * so this is one drawVertices call per copy over the shared mesh and colours.
+     */
+    fun draw(scope: DrawScope, center: Offset, brightness: Float) {
+        val mesh = vertices ?: return
+        paint.alpha = brightness
         scope.translate(center.x, center.y) {
             drawIntoCanvas { canvas ->
-                canvas.drawVertices(vertices, BlendMode.Plus, paint)
+                canvas.drawVertices(mesh, BlendMode.Plus, paint)
             }
+        }
+    }
+
+    /**
+     * Whether the fan wedge from [apex] along [axis] - [reach] far, [halfSpread] wide - can reach
+     * the screen. Conservative: anything that grazes the screen passes, so a mirror copy is only
+     * dropped when it provably shows nothing there.
+     */
+    fun wedgeReachesScreen(apex: Offset, axis: Offset): Boolean {
+        val dx = maxOf(maxOf(-apex.x, 0f), apex.x - cachedW)
+        val dy = maxOf(maxOf(-apex.y, 0f), apex.y - cachedH)
+        if (dx == 0f && dy == 0f) return true // apex on the screen: the wedge always covers some
+        if (hypot(dx, dy) > reach) return false
+        // The screen is convex and the apex outside it, so as seen from the apex it subtends one
+        // arc below half a turn, delimited by its corners. Drop the copy when that arc misses the
+        // wedge's [-halfSpread, halfSpread] about the axis.
+        val theta = atan2(axis.y, axis.x)
+        val a = cornerAngles
+        a[0] = wrapPi(atan2(-apex.y, -apex.x) - theta)
+        a[1] = wrapPi(atan2(-apex.y, cachedW - apex.x) - theta)
+        a[2] = wrapPi(atan2(cachedH - apex.y, cachedW - apex.x) - theta)
+        a[3] = wrapPi(atan2(cachedH - apex.y, -apex.x) - theta)
+        a.sort()
+        // The widest circular gap between corners is the side the screen leaves empty; the arc
+        // it subtends is the rest of the turn, starting just past that gap.
+        val turn = 360f * DEG
+        var arcStart = a[0]
+        var gap = a[0] + turn - a[3]
+        for (i in 0..2) {
+            val g = a[i + 1] - a[i]
+            if (g > gap) {
+                gap = g
+                arcStart = a[i + 1]
+            }
+        }
+        val arcHalf = (turn - gap) / 2f
+        return abs(wrapPi(arcStart + arcHalf)) <= halfSpread + arcHalf
+    }
+}
+
+/* -------------------------------- fan mirrors -------------------------------- */
+
+// Bounce bookkeeping for the fan's hall of mirrors at the screen edges.
+private const val MAX_BOUNCES = 10
+private const val WALL_REFLECT = 0.9f
+
+// The screen edges, as mirrors for the fan.
+private const val WALL_L = 0
+private const val WALL_R = 1
+private const val WALL_T = 2
+private const val WALL_B = 3
+
+/**
+ * The screen is a hall of mirrors for the rainbow fan: the wedge that leaves through an edge
+ * comes back in as its mirror image across that edge, [WALL_REFLECT] darker per bounce and
+ * completely absorbed past [MAX_BOUNCES]. Copies are walked depth-first from the unreflected fan,
+ * never back across the wall just crossed (that only undoes the bounce), and a branch is dropped
+ * whole the moment its mirrored wedge cannot reach the screen: light that never re-enters the
+ * room cannot bounce again. Each copy is the regular fan draw under the composed edge
+ * reflections, clipped to the screen - only the spill back across the edge shows, never the
+ * mirrored apex outside it. The unreflected fan is drawn separately and unclipped.
+ */
+private fun DrawScope.drawFanReflections(
+    fan: FanMesh,
+    center: Offset,
+    fanAngle: Float,
+    w: Float,
+    h: Float,
+) {
+    reflectFan(fan, center, fanAngle, w, h, -1, 1, 0f, 0f, 1, WALL_REFLECT, WALL_L)
+    reflectFan(fan, center, fanAngle, w, h, -1, 1, 2f * w, 0f, 1, WALL_REFLECT, WALL_R)
+    reflectFan(fan, center, fanAngle, w, h, 1, -1, 0f, 0f, 1, WALL_REFLECT, WALL_T)
+    reflectFan(fan, center, fanAngle, w, h, 1, -1, 0f, 2f * h, 1, WALL_REFLECT, WALL_B)
+}
+
+/**
+ * One mirror image of the fan after [depth] bounces: the fan mapped by (x, y) -> (sx * x + bx,
+ * sy * y + by), a composition of reflections across screen edges. [fromWall] is the edge whose
+ * reflection produced this image; children reflect across the other three.
+ */
+private fun DrawScope.reflectFan(
+    fan: FanMesh,
+    center: Offset,
+    fanAngle: Float,
+    w: Float,
+    h: Float,
+    sx: Int,
+    sy: Int,
+    bx: Float,
+    by: Float,
+    depth: Int,
+    brightness: Float,
+    fromWall: Int,
+) {
+    if (!fan.wedgeReachesScreen(
+            Offset(sx * center.x + bx, sy * center.y + by),
+            Offset(sx * cos(fanAngle), -sy * sin(fanAngle)),
+        )
+    ) return
+
+    clipRect(0f, 0f, w, h) {
+        translate(bx, by) {
+            scale(sx.toFloat(), sy.toFloat(), Offset.Zero) {
+                withTransform({ rotate(-fanAngle / DEG, center) }) {
+                    fan.draw(this, center, brightness)
+                }
+            }
+        }
+    }
+
+    if (depth >= MAX_BOUNCES) return // the mirrors absorb everything past the tenth bounce
+    val next = brightness * WALL_REFLECT
+    for (wall in WALL_L..WALL_B) {
+        if (wall == fromWall) continue // reflecting back across the wall just crossed undoes it
+        when (wall) {
+            WALL_L -> reflectFan(fan, center, fanAngle, w, h, -sx, sy, -bx, by, depth + 1, next, wall)
+            WALL_R -> reflectFan(fan, center, fanAngle, w, h, -sx, sy, 2f * w - bx, by, depth + 1, next, wall)
+            WALL_T -> reflectFan(fan, center, fanAngle, w, h, sx, -sy, bx, -by, depth + 1, next, wall)
+            else -> reflectFan(fan, center, fanAngle, w, h, sx, -sy, bx, 2f * h - by, depth + 1, next, wall)
         }
     }
 }

@@ -67,22 +67,6 @@ sealed class Widget {
                             ?: NotesWidgetConfig()
                     NotesWidget(entity.id, config)
                 }
-                OrbCalendarWidget.Type -> OrbCalendarWidget(
-                    entity.id,
-                    Json.decodeFromStringOrNull(entity.config?.takeIf { it.isNotBlank() })
-                        ?: OrbCalendarWidgetConfig(),
-                )
-                OrbBoardWidget.Type -> OrbBoardWidget(
-                    entity.id,
-                    Json.decodeFromStringOrNull(entity.config?.takeIf { it.isNotBlank() })
-                        ?: OrbBoardWidgetConfig(),
-                )
-                OrbTrackerWidget.Type -> OrbTrackerWidget(
-                    entity.id,
-                    Json.decodeFromStringOrNull(entity.config?.takeIf { it.isNotBlank() })
-                        ?: OrbTrackerWidgetConfig(),
-                )
-
                 else -> null
             }
         }

@@ -37,9 +37,6 @@ import de.mm20.launcher2.ui.launcher.widgets.external.AppWidget
 import de.mm20.launcher2.ui.launcher.widgets.favorites.AppsWidget
 import de.mm20.launcher2.ui.launcher.widgets.music.MusicWidget
 import de.mm20.launcher2.ui.launcher.widgets.notes.NotesWidget
-import de.mm20.launcher2.ui.launcher.widgets.orb.OrbBoardWidget
-import de.mm20.launcher2.ui.launcher.widgets.orb.OrbCalendarWidget
-import de.mm20.launcher2.ui.launcher.widgets.orb.OrbTrackerWidget
 import de.mm20.launcher2.ui.launcher.widgets.weather.WeatherWidget
 import de.mm20.launcher2.ui.theme.transparency.transparency
 import de.mm20.launcher2.widgets.AppWidget
@@ -47,9 +44,6 @@ import de.mm20.launcher2.widgets.CalendarWidget
 import de.mm20.launcher2.widgets.AppsWidget
 import de.mm20.launcher2.widgets.MusicWidget
 import de.mm20.launcher2.widgets.NotesWidget
-import de.mm20.launcher2.widgets.OrbBoardWidget
-import de.mm20.launcher2.widgets.OrbCalendarWidget
-import de.mm20.launcher2.widgets.OrbTrackerWidget
 import de.mm20.launcher2.widgets.WeatherWidget
 import de.mm20.launcher2.widgets.Widget
 
@@ -151,18 +145,6 @@ fun WidgetItem(
                             widget,
                             onWidgetAdd = onWidgetAdd,
                         )
-                    }
-
-                    is OrbCalendarWidget -> {
-                        OrbCalendarWidget(widget)
-                    }
-
-                    is OrbBoardWidget -> {
-                        OrbBoardWidget(widget)
-                    }
-
-                    is OrbTrackerWidget -> {
-                        OrbTrackerWidget(widget)
                     }
 
                     is AppWidget -> {

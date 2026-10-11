@@ -220,9 +220,6 @@ internal fun PieActionType.iconRes(): Int = when (this) {
     PieActionType.Voice -> R.drawable.ic_mic
     PieActionType.Search -> R.drawable.search_24px
     PieActionType.Widgets -> R.drawable.widgets_24px
-    PieActionType.Calendar -> R.drawable.today_24px
-    PieActionType.Board -> R.drawable.dashboard_2_24px
-    PieActionType.Tracker -> R.drawable.timer_24px
     PieActionType.Settings -> R.drawable.settings_24px
     PieActionType.Edit -> R.drawable.edit_24px
 }

@@ -194,7 +194,6 @@ fun HomescreenSettingsScreen() {
                         stringResource(R.string.preference_wallpaper_type_prism) to WallpaperType.Prism,
                         stringResource(R.string.preference_wallpaper_type_solar_system) to WallpaperType.SolarSystem,
                         stringResource(R.string.preference_wallpaper_type_boids) to WallpaperType.Boids,
-                        stringResource(R.string.preference_wallpaper_type_mandelbrot) to WallpaperType.Mandelbrot,
                         stringResource(R.string.preference_wallpaper_type_double_pendulum) to WallpaperType.DoublePendulum,
                     ),
                     onValueChanged = {

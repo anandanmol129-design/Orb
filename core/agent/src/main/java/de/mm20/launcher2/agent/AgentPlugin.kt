@@ -18,7 +18,7 @@ import kotlinx.serialization.json.put
  * feature code. A feature must never be reachable in a way that bypasses its tools,
  * so that every action is discoverable and auditable.
  *
- * @param name globally unique, namespaced name, e.g. `orb.calendar.create_event`.
+ * @param name globally unique, namespaced name, e.g. `orb.apps.open`.
  * @param description human/LLM readable description of what the tool does.
  * @param parameters JSON Schema object describing the accepted arguments.
  * @param requiresConfirmation when true, the host must confirm with the user before invoking.
@@ -56,13 +56,13 @@ sealed class ToolResult {
 /**
  * A pluggable feature exposed to agents.
  *
- * First-party plugins (calendar, board, tracker) and future plugins implement this
+ * Plugins (such as the built-in launcher tools) and future plugins implement this
  * interface and register themselves in Koin. The agent runtime only knows about
  * [tools] and [invoke], so plugins can be added or upgraded without touching the
  * voice/LLM layer.
  */
 interface AgentPlugin {
-    /** Stable, globally unique id, e.g. `orb.calendar`. Must not change once shipped. */
+    /** Stable, globally unique id, e.g. `orb.launcher`. Must not change once shipped. */
     val id: String
 
     /** Monotonically increasing schema/behaviour version for the plugin. */

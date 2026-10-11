@@ -7,6 +7,12 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
  * An entry in the radial (pie) menu that radiates from the centre sphere.
@@ -64,9 +70,6 @@ enum class PieActionType {
     Voice,
     Search,
     Widgets,
-    Calendar,
-    Board,
-    Tracker,
     Settings,
     Edit,
 }
@@ -91,13 +94,39 @@ class PieRepository(
     fun items(): List<PieItem> {
         val stored = prefs.getString(KEY_ITEMS, null)
         val loaded = if (stored != null) {
-            runCatching { json.decodeFromString<List<PieItem>>(stored) }
+            runCatching {
+                val tree = json.parseToJsonElement(stored)
+                val pruned = (tree as? JsonArray)
+                    ?.mapNotNull { pruneUnknownActions(it) }
+                    ?.let { JsonArray(it) }
+                    ?: tree
+                json.decodeFromJsonElement<List<PieItem>>(pruned)
+            }
                 .getOrNull()
                 ?.takeIf { it.isNotEmpty() }
         } else {
             null
         }
         return ensureEdit(loaded ?: defaults())
+    }
+
+    /**
+     * Drops items whose action type no longer exists (removed features), so a stored
+     * config keeps the rest of its layout instead of falling back to the defaults.
+     */
+    private fun pruneUnknownActions(element: JsonElement): JsonElement? {
+        if (element !is JsonObject) return element
+        return when ((element["kind"] as? JsonPrimitive)?.contentOrNull) {
+            "action" -> {
+                val type = (element["type"] as? JsonPrimitive)?.contentOrNull
+                element.takeIf { type != null && PieActionType.entries.any { it.name == type } }
+            }
+            "folder" -> {
+                val children = element["children"] as? JsonArray ?: return element
+                JsonObject(element + ("children" to JsonArray(children.mapNotNull { pruneUnknownActions(it) })))
+            }
+            else -> element
+        }
     }
 
     fun save(items: List<PieItem>) {
@@ -159,9 +188,6 @@ class PieRepository(
         fun defaults(): List<PieItem> = listOf(
             PieItem.Action("voice", PieActionType.Voice, "Voice"),
             PieItem.Action("search", PieActionType.Search, "Search"),
-            PieItem.Action("calendar", PieActionType.Calendar, "Calendar"),
-            PieItem.Action("board", PieActionType.Board, "Tasks"),
-            PieItem.Action("tracker", PieActionType.Tracker, "Timer"),
             PieItem.Action("widgets", PieActionType.Widgets, "Widgets"),
             PieItem.Action("settings", PieActionType.Settings, "Settings"),
             PieItem.Action("edit", PieActionType.Edit, "Edit"),

@@ -95,13 +95,6 @@
             android:enableOnBackInvokedCallback="true" />
 
         <activity
-            android:name=".features.orb.OrbFeaturesActivity"
-            android:exported="false"
-            android:label="Orb"
-            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
-            android:enableOnBackInvokedCallback="true" />
-
-        <activity
             android:name=".launcher.ImportThemeActivity"
             android:excludeFromRecents="true"
             android:exported="true"

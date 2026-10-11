@@ -227,9 +227,6 @@
     <string name="widget_name_music">Media</string>
     <string name="widget_name_apps">Apps</string>
     <string name="widget_name_notes">Note</string>
-    <string name="widget_name_orb_calendar">Orb Calendar</string>
-    <string name="widget_name_orb_board">Orb Tasks</string>
-    <string name="widget_name_orb_tracker">Orb Timer</string>
     <string name="widget_name_unknown">Unknown</string>
     <string name="widget_add_widget">Add widget</string>
     <string name="widget_removed">Widget removed</string>
@@ -545,7 +542,6 @@
     <string name="preference_wallpaper_type_prism">Prism</string>
     <string name="preference_wallpaper_type_solar_system">Solar system</string>
     <string name="preference_wallpaper_type_boids">Birds</string>
-    <string name="preference_wallpaper_type_mandelbrot">Fractal</string>
     <string name="preference_wallpaper_type_double_pendulum">Double pendulum</string>
     <string name="preference_dim_wallpaper">Dim wallpaper</string>
     <string name="preference_dim_wallpaper_summary">In dark themes, darken wallpaper</string>

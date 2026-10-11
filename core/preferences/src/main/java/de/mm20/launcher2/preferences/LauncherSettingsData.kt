@@ -362,7 +362,6 @@ enum class WallpaperType {
     Prism,
     SolarSystem,
     Boids,
-    Mandelbrot,
     DoublePendulum,
 }
 

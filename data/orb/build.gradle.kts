@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.plugin.serialization)
 }
 
@@ -51,14 +50,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.androidx.appcompat)
 
-    api(libs.androidx.roomruntime)
-    ksp(libs.androidx.roomcompiler)
-    api(libs.androidx.room)
-
     implementation(libs.koin.android)
-
-    implementation(project(":core:agent"))
-    implementation(project(":core:ktx"))
 
     testImplementation(libs.bundles.tests)
 }

@@ -20,7 +20,6 @@ fun LauncherWallpaper(
         WallpaperType.Prism -> PrismWallpaper(modifier)
         WallpaperType.SolarSystem -> SolarSystemWallpaper(modifier)
         WallpaperType.Boids -> BoidsWallpaper(modifier)
-        WallpaperType.Mandelbrot -> MandelbrotWallpaper(modifier)
         WallpaperType.DoublePendulum -> DoublePendulumWallpaper(modifier)
     }
 }

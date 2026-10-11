@@ -30,6 +30,15 @@ private const val SPEED_LIMIT = 15f
 private const val MARGIN = 200f
 private const val TURN_FACTOR = 1f
 
+// Population dynamics: birds breed while in flocks and die in isolation.
+private const val MIN_BOIDS = 20
+private const val MAX_BOIDS = 100
+private const val FLOCK_MIN_NEIGHBORS = 2
+private const val BREED_INTERVAL = 45f
+private const val ALONE_GRACE = 8f
+private const val OFFSPRING_POS_JITTER = 16f
+private const val OFFSPRING_VEL_JITTER = 2f
+
 private const val BIRD_LENGTH = 16f
 private const val BIRD_HALF_WIDTH = 5f
 
@@ -43,6 +52,13 @@ private class Bird {
     var dy = 0f
     var depth = 0f
 
+    // Population state: seconds in a flock since the last offspring (or since it
+    // was last alone), seconds alone since it was last in a flock, and the
+    // neighbor count within VISUAL_RANGE from the latest population pass.
+    var breedTime = 0f
+    var aloneTime = 0f
+    var neighbors = 0
+
     init {
         val random = Random(System.nanoTime())
         x = random.nextFloat()
@@ -50,6 +66,16 @@ private class Bird {
         dx = random.nextFloat() * 10f - 5f
         dy = random.nextFloat() * 10f - 5f
         depth = random.nextFloat()
+    }
+
+    fun spawnOffspring(): Bird {
+        val random = Random(System.nanoTime())
+        return Bird().also {
+            it.x = x + (random.nextFloat() * 2f - 1f) * OFFSPRING_POS_JITTER
+            it.y = y + (random.nextFloat() * 2f - 1f) * OFFSPRING_POS_JITTER
+            it.dx = dx + (random.nextFloat() * 2f - 1f) * OFFSPRING_VEL_JITTER
+            it.dy = dy + (random.nextFloat() * 2f - 1f) * OFFSPRING_VEL_JITTER
+        }
     }
 }
 
@@ -73,10 +99,12 @@ private class BoidsViewport {
 /**
  * A flock of birds using the classic boids algorithm (cohesion, separation, alignment with a
  * speed limit and edge avoidance), matching the reference implementation at eater.net/boids.
+ * Birds breed while in flocks and die in isolation, keeping the flock between MIN_BOIDS and
+ * MAX_BOIDS.
  */
 @Composable
 fun BoidsWallpaper(modifier: Modifier = Modifier) {
-    val birds = remember { List(NUM_BOIDS) { Bird() } }
+    val birds = remember { MutableList(NUM_BOIDS) { Bird() } }
     val scratchPath = remember { Path() }
     val viewport = remember { BoidsViewport() }
     val pointer = remember { BoidsPointerState() }
@@ -84,6 +112,7 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         var initialized = false
+        var lastFrameNanos = 0L
         while (isActive) {
             withFrameNanos { now ->
                 if (viewport.w > 0f) {
@@ -95,8 +124,15 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
                         initialized = true
                     }
                     pointer.setTarget(Offset(WallpaperPointer.x, WallpaperPointer.y), WallpaperPointer.pressed)
+                    val dt = if (lastFrameNanos == 0L) {
+                        0f
+                    } else {
+                        ((now - lastFrameNanos) / 1_000_000_000.0).toFloat()
+                    }
                     stepBoids(birds, viewport, pointer)
+                    updatePopulation(birds, dt)
                 }
+                lastFrameNanos = now
                 frame.longValue = now
             }
         }
@@ -199,6 +235,63 @@ private fun stepBoids(birds: List<Bird>, viewport: BoidsViewport, pointer: Boids
 
         boid.x += boid.dx
         boid.y += boid.dy
+    }
+}
+
+/**
+ * Population dynamics, applied after the movement step: birds with at least
+ * [FLOCK_MIN_NEIGHBORS] neighbors within [VISUAL_RANGE] breed every [BREED_INTERVAL] seconds,
+ * birds with none die after [ALONE_GRACE] seconds, and the population is hard-clamped to
+ * [MIN_BOIDS]..[MAX_BOIDS]. Between those two states (exactly one neighbor) no timer runs.
+ */
+private fun updatePopulation(birds: MutableList<Bird>, dt: Float) {
+    // One O(n^2) neighbor count pass over the post-step positions.
+    for (bird in birds) bird.neighbors = 0
+    for (i in birds.indices) {
+        val a = birds[i]
+        for (j in i + 1 until birds.size) {
+            if (distance(a, birds[j]) < VISUAL_RANGE) {
+                a.neighbors++
+                birds[j].neighbors++
+            }
+        }
+    }
+
+    for (bird in birds) {
+        when {
+            bird.neighbors >= FLOCK_MIN_NEIGHBORS -> {
+                bird.breedTime += dt
+                bird.aloneTime = 0f
+            }
+            bird.neighbors == 0 -> {
+                bird.aloneTime += dt
+                bird.breedTime = 0f
+            }
+            // Exactly one neighbor: neither in a flock nor alone, no timer runs.
+        }
+    }
+
+    // Deaths: in-place removal over a backward index loop, never below MIN_BOIDS.
+    var i = birds.size - 1
+    while (i >= 0) {
+        val bird = birds[i]
+        if (bird.aloneTime >= ALONE_GRACE && birds.size > MIN_BOIDS) {
+            birds.removeAt(i)
+        }
+        i--
+    }
+
+    // Births: only birds present before this pass breed; newborns land beyond that
+    // boundary and join the count on the next step. Never above MAX_BOIDS.
+    val grown = birds.size
+    i = 0
+    while (i < grown) {
+        val bird = birds[i]
+        if (bird.breedTime >= BREED_INTERVAL && birds.size < MAX_BOIDS) {
+            bird.breedTime = 0f
+            birds.add(bird.spawnOffspring())
+        }
+        i++
     }
 }
 

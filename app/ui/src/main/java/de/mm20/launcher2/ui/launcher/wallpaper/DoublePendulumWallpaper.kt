@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.isActive
 import kotlin.math.PI
@@ -19,6 +20,37 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 private const val MAX_TRAIL = 400
+
+private class TrailPalette(
+    val bandColors: List<Color>,
+    val bandWidths: FloatArray,
+    val headColor: Color,
+    val glowColor: Color,
+)
+
+private val CoolTrailPalette = TrailPalette(
+    bandColors = listOf(
+        Color(0xFF3A2E8C).copy(alpha = 0.10f),
+        Color(0xFF4A5FD0).copy(alpha = 0.18f),
+        Color(0xFF57A8FF).copy(alpha = 0.35f),
+        Color(0xFFBFE6FF).copy(alpha = 0.8f),
+    ),
+    bandWidths = floatArrayOf(6f, 4.5f, 3f, 1.8f),
+    headColor = Color(0xFFBFE6FF),
+    glowColor = Color(0xFFDCEBFF),
+)
+
+private val WarmTrailPalette = TrailPalette(
+    bandColors = listOf(
+        Color(0xFF8C3A2E).copy(alpha = 0.10f),
+        Color(0xFFD0792B).copy(alpha = 0.18f),
+        Color(0xFFFFC44D).copy(alpha = 0.35f),
+        Color(0xFFFFF0D2).copy(alpha = 0.8f),
+    ),
+    bandWidths = floatArrayOf(5f, 3.8f, 2.5f, 1.5f),
+    headColor = Color(0xFFFFF0D2),
+    glowColor = Color(0xFFFFF0D2),
+)
 
 private class DoublePendulum {
     var theta1 = PI / 2.0
@@ -40,13 +72,14 @@ private class PendulumViewport {
 }
 
 /**
- * A chaotic double pendulum on a black background, with a fading glow trail tracing the tip.
+ * A chaotic double pendulum on a black background, with fading glow trails tracing both bobs.
  */
 @Composable
 fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
     val pendulum = remember { DoublePendulum() }
     val viewport = remember { PendulumViewport() }
     val trail = remember { mutableListOf<Offset>() }
+    val trail1 = remember { mutableListOf<Offset>() }
     val frame = remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(Unit) {
@@ -69,6 +102,8 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
                     pendulum.bob2X = (pendulum.bob1X + l2 * sin(pendulum.theta2)).toFloat()
                     pendulum.bob2Y = (pendulum.bob1Y + l2 * cos(pendulum.theta2)).toFloat()
 
+                    trail1.add(Offset(pendulum.bob1X, pendulum.bob1Y))
+                    while (trail1.size > MAX_TRAIL) trail1.removeAt(0)
                     trail.add(Offset(pendulum.bob2X, pendulum.bob2Y))
                     while (trail.size > MAX_TRAIL) trail.removeAt(0)
                 }
@@ -91,57 +126,9 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
             ),
         )
 
-        // Light-painting trail: a wide dim violet tail melting into a hot thin head.
-        val n = trail.size
-        if (n >= 2) {
-            val bandColors = listOf(
-                Color(0xFF3A2E8C).copy(alpha = 0.10f),
-                Color(0xFF4A5FD0).copy(alpha = 0.18f),
-                Color(0xFF57A8FF).copy(alpha = 0.35f),
-                Color(0xFFBFE6FF).copy(alpha = 0.8f),
-            )
-            val bandWidths = floatArrayOf(6f, 4.5f, 3f, 1.8f)
-            for (b in 0 until 4) {
-                val end = n - (3 - b) * 100
-                val start = (end - 100).coerceAtLeast(0)
-                if (end - start < 2) continue
-                val path = Path().apply {
-                    moveTo(trail[start].x, trail[start].y)
-                    for (i in start + 1 until end) lineTo(trail[i].x, trail[i].y)
-                }
-                drawPath(
-                    path = path,
-                    color = bandColors[b],
-                    style = Stroke(width = bandWidths[b]),
-                    blendMode = BlendMode.Plus,
-                )
-            }
-        }
-
-        // Hot head.
-        if (n > 0) {
-            val head = trail[n - 1]
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xFFBFE6FF).copy(alpha = 0.35f), Color.Transparent),
-                    center = head,
-                    radius = 26f,
-                ),
-                radius = 26f,
-                center = head,
-                blendMode = BlendMode.Plus,
-            )
-            val glowStart = (n - 40).coerceAtLeast(0)
-            for (i in glowStart until n) {
-                val t = (i - glowStart) / 40f
-                drawCircle(
-                    color = Color(0xFFDCEBFF).copy(alpha = 0.5f * t),
-                    radius = 1f + 2.5f * t,
-                    center = trail[i],
-                    blendMode = BlendMode.Plus,
-                )
-            }
-        }
+        // Light-painting trails: warm upper bob path first, cool lower bob path on top.
+        drawLightTrail(trail1, WarmTrailPalette)
+        drawLightTrail(trail, CoolTrailPalette)
 
         val anchor = Offset(pendulum.anchorX, pendulum.anchorY)
         val bob1 = Offset(pendulum.bob1X, pendulum.bob1Y)
@@ -211,6 +198,53 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
                 radius = size.maxDimension * 0.8f,
             ),
         )
+    }
+}
+
+private fun DrawScope.drawLightTrail(trail: List<Offset>, palette: TrailPalette) {
+    // Light-painting path: a wide dim tail melting into a hot thin head.
+    val n = trail.size
+    if (n >= 2) {
+        for (b in 0 until 4) {
+            val end = n - (3 - b) * 100
+            val start = (end - 100).coerceAtLeast(0)
+            if (end - start < 2) continue
+            val path = Path().apply {
+                moveTo(trail[start].x, trail[start].y)
+                for (i in start + 1 until end) lineTo(trail[i].x, trail[i].y)
+            }
+            drawPath(
+                path = path,
+                color = palette.bandColors[b],
+                style = Stroke(width = palette.bandWidths[b]),
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+
+    // Hot head.
+    if (n > 0) {
+        val head = trail[n - 1]
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(palette.headColor.copy(alpha = 0.35f), Color.Transparent),
+                center = head,
+                radius = 26f,
+            ),
+            radius = 26f,
+            center = head,
+            blendMode = BlendMode.Plus,
+        )
+        val glowStart = (n - 40).coerceAtLeast(0)
+        for (i in glowStart until n) {
+            val t = (i - glowStart) / 40f
+            drawCircle(
+                color = palette.glowColor.copy(alpha = 0.5f * t),
+                radius = 1f + 2.5f * t,
+                center = trail[i],
+                blendMode = BlendMode.Plus,
+            )
+        }
     }
 }
 

@@ -2,6 +2,7 @@ package de.mm20.launcher2.ui.launcher.orb
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.os.Process
@@ -59,6 +60,7 @@ import de.mm20.launcher2.ui.launcher.scaffold.LauncherScaffoldState
 import de.mm20.launcher2.ui.launcher.scaffold.components.ScaffoldComponent
 import de.mm20.launcher2.ui.settings.orb.OrbSettingsActivity
 import de.mm20.launcher2.ui.launcher.scaffold.components.WidgetsComponent
+import de.mm20.launcher2.ui.launcher.feed.FeedReaderActivity
 import de.mm20.launcher2.ui.launcher.widgets.clock.ClockWidget
 import de.mm20.launcher2.ui.locals.LocalSnackbarHostState
 import de.mm20.launcher2.voice.VoiceController
@@ -218,6 +220,10 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         }
 
                         PieActionType.Search -> state.openSearch()
+
+                        PieActionType.Feed -> context.startActivity(
+                            Intent(context, FeedReaderActivity::class.java)
+                        )
 
                         PieActionType.Widgets -> state.openComponent(
                             WidgetsComponent.forTarget(widgetsTargetOf(item.widgetsTarget)),

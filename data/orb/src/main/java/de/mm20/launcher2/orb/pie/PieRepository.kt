@@ -69,6 +69,7 @@ sealed class PieItem {
 enum class PieActionType {
     Voice,
     Search,
+    Feed,
     Widgets,
     Settings,
     Edit,
@@ -107,7 +108,20 @@ class PieRepository(
         } else {
             null
         }
-        return ensureEdit(loaded ?: defaults())
+        val items = ensureEdit(loaded ?: defaults())
+        // Existing installs keep their saved pie configuration, so adding Feed to the
+        // defaults alone would leave the new action unavailable on those devices.
+        if (!prefs.getBoolean(KEY_FEED_MIGRATED, false)) {
+            val migrated = if (items.any { it is PieItem.Action && it.type == PieActionType.Feed }) {
+                items
+            } else {
+                items + PieItem.Action("feed", PieActionType.Feed, "Feed")
+            }
+            save(migrated)
+            prefs.edit().putBoolean(KEY_FEED_MIGRATED, true).apply()
+            return migrated
+        }
+        return items
     }
 
     /**
@@ -179,6 +193,7 @@ class PieRepository(
     companion object {
         private const val PREFS = "orb_pie"
         private const val KEY_ITEMS = "items_v1"
+        private const val KEY_FEED_MIGRATED = "feed_action_migrated"
         private const val KEY_ORB_CX = "orb_center_x"
         private const val KEY_ORB_CY = "orb_center_y"
         private const val KEY_ORB_SCALE = "orb_scale"
@@ -188,6 +203,7 @@ class PieRepository(
         fun defaults(): List<PieItem> = listOf(
             PieItem.Action("voice", PieActionType.Voice, "Voice"),
             PieItem.Action("search", PieActionType.Search, "Search"),
+            PieItem.Action("feed", PieActionType.Feed, "Feed"),
             PieItem.Action("widgets", PieActionType.Widgets, "Widgets"),
             PieItem.Action("settings", PieActionType.Settings, "Settings"),
             PieItem.Action("edit", PieActionType.Edit, "Edit"),

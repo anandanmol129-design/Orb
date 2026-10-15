@@ -95,6 +95,13 @@
             android:enableOnBackInvokedCallback="true" />
 
         <activity
+            android:name=".launcher.feed.FeedReaderActivity"
+            android:exported="false"
+            android:label="Feed"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+            android:enableOnBackInvokedCallback="true" />
+
+        <activity
             android:name=".launcher.ImportThemeActivity"
             android:excludeFromRecents="true"
             android:exported="true"

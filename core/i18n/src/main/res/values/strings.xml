@@ -934,6 +934,7 @@
     <string name="clock_style_binary">Binary</string>
     <string name="clock_style_analog">Hands</string>
     <string name="clock_style_segment">7-segment</string>
+    <string name="clock_style_reactor">Orbital Reactor</string>
     <string name="clock_style_empty">No clock</string>
     <string name="clock_style_custom">Custom widget</string>
     <string name="clock_variant_outlined">Outlined</string>

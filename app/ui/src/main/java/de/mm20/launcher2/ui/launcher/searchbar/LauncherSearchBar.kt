@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
@@ -51,6 +52,7 @@ fun LauncherSearchBar(
     onKeyboardActionGo: (KeyboardActionScope.() -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
 
     val searchVM: SearchVM = viewModel()
@@ -60,7 +62,10 @@ fun LauncherSearchBar(
     val sheetManager = LocalBottomSheetManager.current
 
     LaunchedEffect(focused) {
-        if (focused) focusRequester.requestFocus()
+        if (focused) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
         else focusManager.clearFocus()
     }
 

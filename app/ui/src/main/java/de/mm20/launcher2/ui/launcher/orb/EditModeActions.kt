@@ -41,6 +41,7 @@ fun BoxScope.EditModeActions(
     trashCenter: Offset,
     onDone: () -> Unit,
     onAddApp: () -> Unit,
+    onEditOrb: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -71,6 +72,20 @@ fun BoxScope.EditModeActions(
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.primary)
+                .clickable(onClick = onEditOrb)
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Edit Orb",
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
         Box(
             modifier = Modifier

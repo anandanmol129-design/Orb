@@ -919,6 +919,12 @@ internal class LauncherScaffoldState(
     }
 
     internal suspend fun openSearch() {
+        // Orb taps and tap gestures are dispatched from independent coroutines. Ignore a
+        // repeated request while search is already open or its opening transition is running;
+        // otherwise a second transition can cancel the first animation and leave the scaffold
+        // with mismatched page/visibility state.
+        if (currentComponent is SearchComponent) return
+
         if (currentComponent != null && currentComponent !is SearchComponent) {
             navigateBack(fast = true)
         }

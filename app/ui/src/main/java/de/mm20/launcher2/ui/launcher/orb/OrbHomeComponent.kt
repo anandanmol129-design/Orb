@@ -361,6 +361,9 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         trashCenter = trashCenter,
                         onDone = { editMode = false },
                         onAddApp = { showAppPicker = true },
+                        onEditOrb = {
+                            context.startActivity(Intent(context, OrbSettingsActivity::class.java))
+                        },
                     )
                 }
             } else {

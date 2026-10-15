@@ -63,6 +63,7 @@ import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.CustomClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.DigitalClock1
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.DigitalClock2
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.OrbitClock
+import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.OrbitalReactorClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SegmentClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.PartProvider
 import de.mm20.launcher2.ui.locals.LocalPreferDarkContentOverWallpaper
@@ -304,6 +305,15 @@ fun Clock(
         )
 
         is ClockWidgetStyle.Segment -> SegmentClock(
+            time = time,
+            compact = compact,
+            showSeconds = showSeconds,
+            twentyFourHours = isTwentyFourHours,
+            useThemeColor = useThemeColor,
+            darkColors = darkColors,
+        )
+
+        is ClockWidgetStyle.Reactor -> OrbitalReactorClock(
             time = time,
             compact = compact,
             showSeconds = showSeconds,

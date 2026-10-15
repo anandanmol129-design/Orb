@@ -510,6 +510,7 @@ fun getClockStyleName(context: Context, style: ClockWidgetStyle): String {
         is ClockWidgetStyle.Binary -> context.getString(R.string.clock_style_binary)
         is ClockWidgetStyle.Analog -> context.getString(R.string.clock_style_analog)
         is ClockWidgetStyle.Segment -> context.getString(R.string.clock_style_segment)
+        is ClockWidgetStyle.Reactor -> context.getString(R.string.clock_style_reactor)
         is ClockWidgetStyle.Empty -> context.getString(R.string.clock_style_empty)
         is ClockWidgetStyle.Custom -> context.getString(R.string.clock_style_custom)
         else -> ""

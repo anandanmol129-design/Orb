@@ -30,6 +30,7 @@ class ClockWidgetSettingsScreenVM : ViewModel(), KoinComponent {
             ClockWidgetStyle.Orbit,
             ClockWidgetStyle.Segment,
             ClockWidgetStyle.Binary,
+            ClockWidgetStyle.Reactor,
             custom,
             ClockWidgetStyle.Empty,
         )

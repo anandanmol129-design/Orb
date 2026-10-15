@@ -75,6 +75,12 @@ class ClockWidgetSettings internal constructor(
                 ClockWidgetStyleEnum.Analog -> it.clockWidgetAnalog
                 ClockWidgetStyleEnum.Binary -> ClockWidgetStyle.Binary
                 ClockWidgetStyleEnum.Segment -> ClockWidgetStyle.Segment
+                ClockWidgetStyleEnum.Flip, ClockWidgetStyleEnum.SunArc -> ClockWidgetStyle.Digital2
+                ClockWidgetStyleEnum.Reactor -> ClockWidgetStyle.Reactor
+                ClockWidgetStyleEnum.EclipseBloom,
+                ClockWidgetStyleEnum.AuroraDrift,
+                ClockWidgetStyleEnum.RetroRadar,
+                ClockWidgetStyleEnum.LiquidChrome -> ClockWidgetStyle.Digital2
                 ClockWidgetStyleEnum.Empty -> ClockWidgetStyle.Empty
                 ClockWidgetStyleEnum.Custom -> it.clockWidgetCustom
             }
@@ -155,6 +161,13 @@ internal val ClockWidgetStyle.enumValue
         is ClockWidgetStyle.Analog -> ClockWidgetStyleEnum.Analog
         is ClockWidgetStyle.Binary -> ClockWidgetStyleEnum.Binary
         is ClockWidgetStyle.Segment -> ClockWidgetStyleEnum.Segment
+        is ClockWidgetStyle.Flip -> ClockWidgetStyleEnum.Flip
+        is ClockWidgetStyle.SunArc -> ClockWidgetStyleEnum.SunArc
+        is ClockWidgetStyle.Reactor -> ClockWidgetStyleEnum.Reactor
+        is ClockWidgetStyle.EclipseBloom -> ClockWidgetStyleEnum.EclipseBloom
+        is ClockWidgetStyle.AuroraDrift -> ClockWidgetStyleEnum.AuroraDrift
+        is ClockWidgetStyle.RetroRadar -> ClockWidgetStyleEnum.RetroRadar
+        is ClockWidgetStyle.LiquidChrome -> ClockWidgetStyleEnum.LiquidChrome
         is ClockWidgetStyle.Empty -> ClockWidgetStyleEnum.Empty
         is ClockWidgetStyle.Custom -> ClockWidgetStyleEnum.Custom
     }

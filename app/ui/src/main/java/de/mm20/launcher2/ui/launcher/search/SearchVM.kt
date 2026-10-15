@@ -138,10 +138,6 @@ class SearchVM : ViewModel(), KoinComponent {
 
     val selectedAppProfileType = mutableStateOf(Profile.Type.Personal)
 
-    init {
-        search("", forceRestart = true)
-    }
-
     fun launchBestMatchOrAction(context: Context) {
         val bestMatch = bestMatch.value
         if (bestMatch is SavableSearchable) {

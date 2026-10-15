@@ -82,6 +82,8 @@ fun SearchColumn(
 
     val viewModel: SearchVM = viewModel()
 
+    // SearchColumn remains composed for the search component even while that page is offscreen,
+    // so this initial load also warms the app results before the user opens search.
     LaunchedEffect(viewModel, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.resumeSearch()

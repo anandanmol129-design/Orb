@@ -249,6 +249,14 @@ internal enum class ClockWidgetStyleEnum {
     Analog,
     Binary,
     Segment,
+    // Retained so builds that briefly offered these styles can still read their saved setting.
+    Flip,
+    SunArc,
+    Reactor,
+    EclipseBloom,
+    AuroraDrift,
+    RetroRadar,
+    LiquidChrome,
     Empty,
     Custom,
 }
@@ -291,6 +299,34 @@ sealed interface ClockWidgetStyle {
     @Serializable
     @SerialName("segment")
     data object Segment : ClockWidgetStyle
+
+    @Serializable
+    @SerialName("flip")
+    data object Flip : ClockWidgetStyle
+
+    @Serializable
+    @SerialName("sunArc")
+    data object SunArc : ClockWidgetStyle
+
+    @Serializable
+    @SerialName("reactor")
+    data object Reactor : ClockWidgetStyle
+
+    @Serializable
+    @SerialName("eclipseBloom")
+    data object EclipseBloom : ClockWidgetStyle
+
+    @Serializable
+    @SerialName("auroraDrift")
+    data object AuroraDrift : ClockWidgetStyle
+
+    @Serializable
+    @SerialName("retroRadar")
+    data object RetroRadar : ClockWidgetStyle
+
+    @Serializable
+    @SerialName("liquidChrome")
+    data object LiquidChrome : ClockWidgetStyle
 
     @Serializable
     @SerialName("empty")

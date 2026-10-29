@@ -544,6 +544,7 @@
     <string name="preference_wallpaper_type_boids">Birds</string>
     <string name="preference_wallpaper_type_double_pendulum">Double pendulum</string>
     <string name="preference_wallpaper_type_games">Games</string>
+    <string name="preference_wallpaper_type_strings">Light strings</string>
     <string name="wallpaper_games_tic_tac_toe">TIC-TAC-TOE</string>
     <string name="wallpaper_games_2048">2048</string>
     <string name="wallpaper_games_sudoku">SUDOKU</string>

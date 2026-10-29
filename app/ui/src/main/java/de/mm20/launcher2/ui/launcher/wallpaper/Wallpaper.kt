@@ -22,5 +22,6 @@ fun LauncherWallpaper(
         WallpaperType.Boids -> BoidsWallpaper(modifier)
         WallpaperType.DoublePendulum -> DoublePendulumWallpaper(modifier)
         WallpaperType.Games -> GamesWallpaper(modifier)
+        WallpaperType.Strings -> StringsWallpaper(modifier)
     }
 }

@@ -400,6 +400,7 @@ enum class WallpaperType {
     Boids,
     DoublePendulum,
     Games,
+    Strings,
 }
 
 @Serializable

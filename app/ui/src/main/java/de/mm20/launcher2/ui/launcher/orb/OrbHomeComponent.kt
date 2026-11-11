@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +64,7 @@ import de.mm20.launcher2.ui.launcher.scaffold.components.WidgetsComponent
 import de.mm20.launcher2.ui.launcher.feed.FeedReaderActivity
 import de.mm20.launcher2.ui.launcher.widgets.clock.ClockWidget
 import de.mm20.launcher2.ui.locals.LocalSnackbarHostState
+import de.mm20.launcher2.ui.launcher.wallpaper.WallpaperVoice
 import de.mm20.launcher2.voice.VoiceController
 import de.mm20.launcher2.voice.VoiceUiState
 import kotlinx.coroutines.Dispatchers
@@ -125,6 +127,19 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         val amplitude by voiceController.amplitude.collectAsState()
         val transcript by voiceController.transcript.collectAsState()
         val musicPlaying = rememberMusicPlaying()
+
+        // Mirror the assistant's state for the wallpaper layer, which sits outside this tree.
+        SideEffect {
+            WallpaperVoice.level = amplitude
+            WallpaperVoice.musicPlaying = musicPlaying.value
+            WallpaperVoice.state = when (voiceState) {
+                VoiceUiState.Idle -> WallpaperVoice.IDLE
+                VoiceUiState.Listening, is VoiceUiState.Confirm -> WallpaperVoice.LISTENING
+                VoiceUiState.Thinking -> WallpaperVoice.THINKING
+                is VoiceUiState.Success -> WallpaperVoice.SUCCESS
+                is VoiceUiState.Error -> WallpaperVoice.ERROR
+            }
+        }
 
         var items by remember { mutableStateOf(pieRepository.items()) }
         // Ids of the folder windows currently open; the last one is on top.

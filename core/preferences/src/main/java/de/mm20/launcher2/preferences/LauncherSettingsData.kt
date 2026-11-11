@@ -31,7 +31,7 @@ data class LauncherSettingsData internal constructor(
     val wallpaperDim: Boolean = false,
     val wallpaperBlur: Boolean = true,
     val wallpaperBlurRadius: Int = 32,
-    val wallpaperType: WallpaperType = WallpaperType.System,
+    val wallpaperType: WallpaperType = WallpaperType.Aurora,
 
     val mediaAllowList: Set<String> = emptySet(),
     val mediaDenyList: Set<String> = emptySet(),
@@ -401,6 +401,14 @@ enum class WallpaperType {
     DoublePendulum,
     Games,
     Strings,
+    Aurora,
+    MagneticField,
+    FluidInk,
+    GravitySand,
+    FlowField,
+    ReactionDiffusion,
+    Attractor,
+    Topographic,
 }
 
 @Serializable

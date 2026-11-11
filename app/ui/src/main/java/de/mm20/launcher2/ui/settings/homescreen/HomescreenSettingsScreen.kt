@@ -197,6 +197,14 @@ fun HomescreenSettingsScreen() {
                         stringResource(R.string.preference_wallpaper_type_double_pendulum) to WallpaperType.DoublePendulum,
                         stringResource(R.string.preference_wallpaper_type_games) to WallpaperType.Games,
                         stringResource(R.string.preference_wallpaper_type_strings) to WallpaperType.Strings,
+                        stringResource(R.string.preference_wallpaper_type_aurora) to WallpaperType.Aurora,
+                        stringResource(R.string.preference_wallpaper_type_magnetic_field) to WallpaperType.MagneticField,
+                        stringResource(R.string.preference_wallpaper_type_fluid_ink) to WallpaperType.FluidInk,
+                        stringResource(R.string.preference_wallpaper_type_gravity_sand) to WallpaperType.GravitySand,
+                        stringResource(R.string.preference_wallpaper_type_flow_field) to WallpaperType.FlowField,
+                        stringResource(R.string.preference_wallpaper_type_reaction_diffusion) to WallpaperType.ReactionDiffusion,
+                        stringResource(R.string.preference_wallpaper_type_attractor) to WallpaperType.Attractor,
+                        stringResource(R.string.preference_wallpaper_type_topographic) to WallpaperType.Topographic,
                     ),
                     onValueChanged = {
                         viewModel.setWallpaperType(it)

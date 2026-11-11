@@ -23,5 +23,13 @@ fun LauncherWallpaper(
         WallpaperType.DoublePendulum -> DoublePendulumWallpaper(modifier)
         WallpaperType.Games -> GamesWallpaper(modifier)
         WallpaperType.Strings -> StringsWallpaper(modifier)
+        WallpaperType.Aurora -> AuroraWallpaper(modifier)
+        WallpaperType.MagneticField -> MagneticFieldWallpaper(modifier)
+        WallpaperType.FluidInk -> FluidInkWallpaper(modifier)
+        WallpaperType.GravitySand -> GravitySandWallpaper(modifier)
+        WallpaperType.FlowField -> FlowFieldWallpaper(modifier)
+        WallpaperType.ReactionDiffusion -> ReactionDiffusionWallpaper(modifier)
+        WallpaperType.Attractor -> AttractorWallpaper(modifier)
+        WallpaperType.Topographic -> TopographicWallpaper(modifier)
     }
 }

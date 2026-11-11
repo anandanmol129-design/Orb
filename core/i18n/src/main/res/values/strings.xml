@@ -545,6 +545,14 @@
     <string name="preference_wallpaper_type_double_pendulum">Double pendulum</string>
     <string name="preference_wallpaper_type_games">Games</string>
     <string name="preference_wallpaper_type_strings">Light strings</string>
+    <string name="preference_wallpaper_type_aurora">Aurora</string>
+    <string name="preference_wallpaper_type_magnetic_field">Magnetic field</string>
+    <string name="preference_wallpaper_type_fluid_ink">Fluid ink</string>
+    <string name="preference_wallpaper_type_gravity_sand">Gravity sand</string>
+    <string name="preference_wallpaper_type_flow_field">Flow field</string>
+    <string name="preference_wallpaper_type_reaction_diffusion">Reaction–diffusion</string>
+    <string name="preference_wallpaper_type_attractor">Strange attractor</string>
+    <string name="preference_wallpaper_type_topographic">Topographic lines</string>
     <string name="wallpaper_games_tic_tac_toe">TIC-TAC-TOE</string>
     <string name="wallpaper_games_2048">2048</string>
     <string name="wallpaper_games_sudoku">SUDOKU</string>

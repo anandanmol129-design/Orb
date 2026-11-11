@@ -8,6 +8,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateIntAsState
@@ -123,6 +125,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.absoluteValue
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -258,6 +261,10 @@ enum class Gesture(val orientation: Orientation?) {
     TapSearchBar(null),
     HomeButton(null),
 }
+
+/** Zoom transition for pages opened by a tap or the home button: quick out of the gate, soft landing. */
+private val ZoomOpenSpec = tween<Offset3D>(280, easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
+private val ZoomCloseSpec = tween<Offset3D>(200, easing = FastOutSlowInEasing)
 
 internal class LauncherScaffoldState(
     private val config: ScaffoldConfiguration,
@@ -732,12 +739,9 @@ internal class LauncherScaffoldState(
         val gesture = currentGesture ?: return
         val anim = currentAnimation ?: return
 
-        when (gesture) {
-            Gesture.TapSearchBar,
-            Gesture.Tap,
-            Gesture.DoubleTap,
-            Gesture.TripleTap,
-            Gesture.LongPress -> {
+        when {
+            // Every gesture without a direction (taps, home button) animates on z.
+            gesture.orientation == null -> {
                 currentOffset3D = Offset3D(z = progress)
             }
 
@@ -825,7 +829,7 @@ internal class LauncherScaffoldState(
             if (gesture.orientation == null) {
                 animateOffset3DTo(
                     Offset3D.Zero,
-                    animationSpec = tween(100),
+                    animationSpec = if (fast) tween(120) else ZoomCloseSpec,
                 )
             } else {
                 animateOffset3DTo(
@@ -845,15 +849,27 @@ internal class LauncherScaffoldState(
             openSearch()
             return
         }
-        setCurrentGesture(gesture)
+        // Pressed again while that page is already up (or on its way up): nothing to do.
+        if (currentComponent == component && isSettledOnSecondaryPage) return
 
-        currentOffset3D = currentOffset3D.copy(z = 0f)
+        zoomIntoPage(component) { setCurrentGesture(gesture) }
+    }
+
+    /**
+     * Zooms [component] in as the secondary page. [bind] points the scaffold at it.
+     *
+     * The page counts as settled as soon as the zoom starts, not when it ends: it is already
+     * on screen, so scrolling it and going back must work right away instead of being ignored
+     * until the animation has finished. A page that is caught on its way out is picked up from
+     * where it is rather than restarted from nothing.
+     */
+    private suspend fun zoomIntoPage(component: ScaffoldComponent, bind: () -> Unit) {
+        val resumeFrom = if (currentComponent == component) currentZOffset.coerceIn(0f, 1f) else 0f
+        bind()
+        currentOffset3D = Offset3D(z = resumeFrom)
         transitionToPage(ScaffoldPage.Secondary, component) {
-            animateOffset3DTo(
-                Offset3D(z = 1f),
-                animationSpec = tween(if (component is WidgetsComponent) 180 else if (component is SearchComponent) 100 else 300),
-            )
             isSettledOnSecondaryPage = true
+            animateOffset3DTo(Offset3D(z = 1f), animationSpec = ZoomOpenSpec)
         }
     }
 
@@ -863,7 +879,9 @@ internal class LauncherScaffoldState(
         animate: suspend () -> Unit,
     ) = withContext(NonCancellable) {
         if (targetPage == ScaffoldPage.Secondary && component is WidgetsComponent) {
-            component.awaitInitialContentReady()
+            // Give the widgets a moment to lay out so the page does not pop in half-built,
+            // but never hold the transition hostage to a slow widget.
+            withTimeoutOrNull(250) { component.awaitInitialContentReady() }
         }
 
         when (targetPage) {
@@ -907,23 +925,15 @@ internal class LauncherScaffoldState(
     ) {
         if (component.hapticFeedback) onHapticFeedback(HapticFeedbackType.LongPress)
 
-        setCurrentGesture(Gesture.Tap, component, animation)
-        currentOffset3D = currentOffset3D.copy(z = 0f)
-        transitionToPage(ScaffoldPage.Secondary, component) {
-            animateOffset3DTo(
-                Offset3D(z = 1f),
-                animationSpec = tween(if (component is WidgetsComponent) 180 else if (component is SearchComponent) 100 else 300),
-            )
-            isSettledOnSecondaryPage = true
-        }
+        zoomIntoPage(component) { setCurrentGesture(Gesture.Tap, component, animation) }
     }
 
     internal suspend fun openSearch() {
         // Orb taps and tap gestures are dispatched from independent coroutines. Ignore a
-        // repeated request while search is already open or its opening transition is running;
-        // otherwise a second transition can cancel the first animation and leave the scaffold
-        // with mismatched page/visibility state.
-        if (currentComponent is SearchComponent) return
+        // repeated request while search is open or opening (a page is settled from the moment
+        // its zoom starts). A search that is still fading *out* is not settled: that tap must
+        // reopen it, otherwise taps made right after closing search are silently dropped.
+        if (currentComponent is SearchComponent && isSettledOnSecondaryPage) return
 
         if (currentComponent != null && currentComponent !is SearchComponent) {
             navigateBack(fast = true)
@@ -1239,7 +1249,11 @@ internal fun LauncherScaffold(
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                     if (source != NestedScrollSource.UserInput) return Offset.Zero
 
-                    if (state.currentProgress != 0f && state.currentProgress != 1f) {
+                    // Mid-swipe the scaffold owns the drag. A zoom transition is not driven by
+                    // the finger, so the page underneath stays scrollable while it plays.
+                    if (state.currentProgress != 0f && state.currentProgress != 1f &&
+                        state.currentAnimation != ScaffoldAnimation.ZoomIn
+                    ) {
                         state.onDrag(available)
                         return available
                     }
@@ -1636,9 +1650,12 @@ private fun Modifier.homePageAnimation(
     if (state.currentAnimation == ScaffoldAnimation.ZoomIn) {
         return this then Modifier
             .graphicsLayer {
-                scaleX = 1f - (state.currentProgress * 0.03f)
-                scaleY = 1f - (state.currentProgress * 0.03f)
-                alpha = (1f - state.currentProgress).coerceIn(0f, 1f)
+                // Home swells toward the viewer and is gone by the halfway point, as if the
+                // page were opening out of the orb.
+                val p = state.currentProgress
+                scaleX = 1f + p * 0.12f
+                scaleY = 1f + p * 0.12f
+                alpha = (1f - p * 2f).coerceIn(0f, 1f)
             }
             .background(backgroundColor)
     }
@@ -1687,9 +1704,12 @@ private fun Modifier.secondaryPageAnimation(
         return this then Modifier
             .background(background)
             .graphicsLayer {
-                scaleX = 1f - ((1f - state.currentProgress) * 0.03f)
-                scaleY = 1f - ((1f - state.currentProgress) * 0.03f)
-                alpha = (state.currentProgress).coerceAtMost(1f)
+                // The page grows into place from slightly small and slightly low.
+                val p = state.currentProgress
+                scaleX = 0.9f + p * 0.1f
+                scaleY = 0.9f + p * 0.1f
+                translationY = (1f - p) * size.height * 0.03f
+                alpha = (p * 1.6f).coerceIn(0f, 1f)
             }
     }
 

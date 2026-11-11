@@ -17,12 +17,15 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -34,12 +37,15 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
+import kotlin.random.Random
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The assistant sphere: a matte white body with two small black dot eyes. The body can take
  * several rounded "blob" shapes (see [OrbShape]); the face and all motion stay the same.
  *
- * Fully monochrome — voice states are expressed purely through body language:
+ * Monochrome apart from a faint blush — voice states are expressed purely through body language:
  * a floating drift and squashy breathing while idle, an eager squash-stretch bob while
  * listening, a slow rock with darting glances while thinking, a hop with a happy face on
  * success and a shivering wince on error.
@@ -53,6 +59,13 @@ import kotlin.math.sin
  *
  * While media plays, the idle body thumps along to a groove ([playing]), like a music
  * visualizer.
+ *
+ * It also behaves like a small pet. It has a mouth that smiles, gapes, frowns and yawns. A
+ * finger resting on it ([pressed]) squishes it like jelly; every tap ([pokeCount]) and every
+ * return to the home screen ([greetCount]) gets a delighted perk with squinting eyes and a
+ * blush. A finger anywhere else on screen ([attention], a -1..1 look vector) is watched
+ * intently. Left alone, it gets up to things on its own: a hop, a wiggle, a curious head tilt,
+ * a yawn.
  */
 @Composable
 fun OrbSphere(
@@ -64,6 +77,10 @@ fun OrbSphere(
     shape: OrbShape = OrbShape.Circle,
     fill: OrbFill = OrbFill.Filled,
     playing: Boolean = false,
+    pressed: Boolean = false,
+    pokeCount: Int = 0,
+    greetCount: Int = 0,
+    attention: () -> Offset? = { null },
 ) {
     val transition = rememberInfiniteTransition(label = "orb")
 
@@ -119,8 +136,9 @@ fun OrbSphere(
     // Gaze follows the target. While the pie is open it tracks the finger with a very stiff
     // spring (the same approach the pie editor uses for its icons); otherwise a softer spring
     // that turns the saccade steps into quick eye flicks.
+    val focus = if (state == OrbState.Idle) attention() else null
     val gazeTarget = when (state) {
-        OrbState.Idle -> Offset(
+        OrbState.Idle -> focus ?: Offset(
             cos(phase * 0.7f) * 0.45f + saccadeX * 0.3f,
             sin(phase * 0.9f) * 0.35f + saccadeY * 0.22f,
         )
@@ -135,7 +153,8 @@ fun OrbSphere(
         OrbState.Pie -> lookAt
         OrbState.Sleep -> Offset(0f, 0.15f)
     }
-    val gazeSpec: AnimationSpec<Float> = if (state == OrbState.Pie) GazeSpecPie else GazeSpecSoft
+    val gazeSpec: AnimationSpec<Float> =
+        if (state == OrbState.Pie || focus != null) GazeSpecPie else GazeSpecSoft
     val gazeX by animateFloatAsState(gazeTarget.x, gazeSpec, label = "gazeX")
     val gazeY by animateFloatAsState(gazeTarget.y, gazeSpec, label = "gazeY")
 
@@ -197,6 +216,85 @@ fun OrbSphere(
         animationSpec = BrowSpec,
         label = "browTiltR",
     )
+
+    // Mouth: how far the corners turn up (-1 frown .. 1 smile) and how far it hangs open.
+    val smile by animateFloatAsState(
+        targetValue = when (state) {
+            OrbState.Idle -> 0.5f
+            OrbState.Pie -> 0.75f
+            OrbState.Listening -> 0.3f
+            OrbState.Thinking -> 0f
+            OrbState.Success -> 1f
+            OrbState.Error -> -0.8f
+            OrbState.Sleep -> 0f
+        },
+        animationSpec = MouthSpec,
+        label = "smile",
+    )
+    val mouthOpen by animateFloatAsState(
+        targetValue = when {
+            state == OrbState.Listening -> 0.5f
+            // Watching a finger somewhere on screen: a small "ooh".
+            focus != null -> 0.3f
+            else -> 0f
+        },
+        animationSpec = MouthSpec,
+        label = "mouthOpen",
+    )
+
+    // A finger resting on the orb squishes it; the loose spring makes it wobble like jelly on
+    // the way down and again when it is let go.
+    val press by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = PressSpec,
+        label = "press",
+    )
+
+    // Delight: squinting eyes, a wider smile and a blush, with a little perk up off the ground.
+    // Fired by a tap and, held a bit longer, by coming back to the home screen.
+    val joy = remember { Animatable(0f) }
+    val perk = remember { Animatable(0f) }
+    LaunchedEffect(pokeCount) {
+        if (pokeCount == 0) return@LaunchedEffect
+        launch {
+            perk.snapTo(-0.4f)
+            perk.animateTo(0f, PerkSpec)
+        }
+        joy.snapTo(1f)
+        delay(380)
+        joy.animateTo(0f, tween(420))
+    }
+    LaunchedEffect(greetCount) {
+        if (greetCount == 0) return@LaunchedEffect
+        launch {
+            perk.snapTo(-0.7f)
+            perk.animateTo(0f, PerkSpec)
+        }
+        joy.snapTo(1f)
+        delay(700)
+        joy.animateTo(0f, tween(500))
+    }
+
+    // Left alone, the orb amuses itself: every few seconds it picks something to do. [act] runs
+    // 0..1 across the antic and is only sampled while drawing.
+    val act = remember { Animatable(0f) }
+    var actKind by remember { mutableIntStateOf(ActNone) }
+    val calm = state == OrbState.Idle && !pressed
+    LaunchedEffect(calm) {
+        actKind = ActNone
+        act.snapTo(0f)
+        if (!calm) return@LaunchedEffect
+        while (true) {
+            delay(Random.nextLong(3500, 8000))
+            val kind = Random.nextInt(1, ActCount)
+            actKind = kind
+            act.animateTo(1f, tween(ActDurations[kind], easing = LinearEasing))
+            actKind = ActNone
+            act.snapTo(0f)
+        }
+    }
+
+    val mouthPath = remember { Path() }
 
     // Fling on every state change: a fast squash and a springy recovery, so the orb visibly
     // flinches into each new state.
@@ -315,6 +413,50 @@ fun OrbSphere(
                 tiltDeg = sin(phase * 0.4f) * 1.5f
             }
         }
+        // Idle antics, layered on the drift. [arc] rises and falls once over the antic.
+        val actT = act.value
+        val arc = sin(actT * PI.toFloat())
+        var eyeScale = 1f
+        var yawn = 0f
+        when (actKind) {
+            // Two little bounces, the second smaller.
+            ActHop -> {
+                val bounce = abs(sin(actT * 2f * PI.toFloat())) * (1f - 0.5f * actT)
+                my -= bounce * r * 0.16f
+                sy *= 1f + 0.06f * bounce
+                sx *= 1f - 0.045f * bounce
+            }
+            // A happy side-to-side shimmy.
+            ActWiggle -> {
+                tiltDeg += sin(actT * 6f * PI.toFloat()) * 9f * arc
+                mx += sin(actT * 6f * PI.toFloat()) * r * 0.03f * arc
+            }
+            // Head cocked to one side, eyes wide: "hm?"
+            ActCurious -> {
+                tiltDeg += arc * 13f
+                mx += arc * r * 0.03f
+                eyeScale = 1f + 0.25f * arc
+            }
+            // A long stretch with the eyes squeezed shut and the mouth wide open.
+            ActYawn -> {
+                yawn = arc
+                eyeScale = 1f - 0.9f * arc
+                sy *= 1f + 0.05f * arc
+                sx *= 1f - 0.03f * arc
+            }
+        }
+        // The body leans a touch into wherever it is looking.
+        if (state == OrbState.Idle) mx += gazeX * r * 0.03f
+        // Squished under a finger, eyes a little wider at the attention.
+        sy *= 1f - 0.08f * press
+        sx *= 1f + 0.06f * press
+        eyeScale *= 1f + 0.12f * press
+        // Tap / greeting perk: a small stretch up off the ground.
+        my += perk.value * r * 0.22f
+        sy *= 1f - 0.16f * perk.value
+        sx *= 1f + 0.12f * perk.value
+        val glee = joy.value
+
         // State-change flinch: quick squash with a matching sideways bulge.
         sy *= reaction.value
         sx *= 2f - reaction.value
@@ -389,8 +531,26 @@ fun OrbSphere(
                     val gx = gazeX * r * 0.38f
                     val gy = gazeY * r * 0.38f
 
+                    // Blush: only on the filled body, where there is a cheek to colour.
+                    val blush = maxOf(glee, press * 0.6f, if (state == OrbState.Success) 1f else 0f)
+                    if (fill != OrbFill.Outline && blush > 0.02f) {
+                        val bw = r * 0.2f
+                        val bh = r * 0.11f
+                        for (s in Signs) {
+                            drawOval(
+                                color = BlushColor,
+                                topLeft = Offset(
+                                    body.x + s * eyeDx * 1.3f + gx * 0.6f - bw / 2f,
+                                    eyeY + r * 0.2f + gy * 0.6f - bh / 2f,
+                                ),
+                                size = Size(bw, bh),
+                                alpha = 0.45f * blush,
+                            )
+                        }
+                    }
+
                     when {
-                        state == OrbState.Success -> {
+                        state == OrbState.Success || glee > 0.35f -> {
                             // Happy, closed-smile eyes.
                             val arcR = r * 0.17f
                             for (s in Signs) {
@@ -421,7 +581,7 @@ fun OrbSphere(
                             // Two small black dots. They blink (squash) and look (shift their
                             // gaze) but never wander from their position on the face.
                             for (s in Signs) {
-                                val open = if (s < 0f) openL else openR
+                                val open = (if (s < 0f) openL else openR) * eyeScale
                                 val ec = Offset(body.x + s * eyeDx + gx, eyeY + gy)
                                 drawOval(
                                     color = ink,
@@ -445,7 +605,7 @@ fun OrbSphere(
                     for (s in Signs) {
                         val browTilt = if (s < 0f) browTiltL else browTiltR
                         val bcx = body.x + s * eyeDx + gx * 0.5f
-                        val bcy = eyeY - er * 2.8f - browRaise * r
+                        val bcy = eyeY - er * 2.8f - (browRaise + 0.03f * glee + 0.025f * yawn) * r
                         rotate(browTilt, pivot = Offset(bcx, bcy)) {
                             drawLine(
                                 color = ink,
@@ -455,6 +615,36 @@ fun OrbSphere(
                                 cap = StrokeCap.Round,
                             )
                         }
+                    }
+
+                    // Mouth. It rides along with the gaze like the rest of the face.
+                    val mcx = body.x + gx * 0.7f
+                    val mcy = eyeY + r * placement[2] + gy * 0.7f
+                    val gape = maxOf(mouthOpen, yawn)
+                    if (gape > 0.12f) {
+                        // Open: a small "o" that grows into a yawn.
+                        val rx = r * (0.06f + 0.05f * gape)
+                        val ry = r * 0.15f * gape
+                        drawOval(
+                            color = ink,
+                            topLeft = Offset(mcx - rx, mcy - ry * 0.6f),
+                            size = Size(rx * 2f, ry * 2f),
+                        )
+                    } else {
+                        // Closed: one stroke whose middle sags into a smile or arches into a
+                        // frown. An error makes it tremble.
+                        var curve = (smile + 0.5f * glee).coerceIn(-1f, 1f)
+                        if (state == OrbState.Error) curve += 0.15f * sin(fast * 5f)
+                        val half = r * (0.14f + 0.06f * abs(curve))
+                        val sag = r * 0.13f * curve
+                        mouthPath.rewind()
+                        mouthPath.moveTo(mcx - half, mcy - sag * 0.35f)
+                        mouthPath.quadraticTo(mcx, mcy + sag, mcx + half, mcy - sag * 0.35f)
+                        drawPath(
+                            path = mouthPath,
+                            color = ink,
+                            style = Stroke(width = r * 0.05f, cap = StrokeCap.Round),
+                        )
                     }
                 }
             }
@@ -484,12 +674,13 @@ private fun hash1d(x: Float): Float {
 }
 
 /**
- * The eye position for a shape, as factors of the body radius. Most shapes share the default
+ * The eye position for a shape, as factors of the body radius: how far each eye sits from the
+ * middle, how far the eye line sits below the centre, and how far the mouth sits below that. Most shapes share the default
  * face; a few (like the point-up triangle) need the eyes lowered into their wider base so they
  * stay inside the body.
  */
-private val EyeDefault = floatArrayOf(0.42f, -0.05f)
-private val EyeTriangle = floatArrayOf(0.3f, 0.22f)
+private val EyeDefault = floatArrayOf(0.42f, -0.05f, 0.4f)
+private val EyeTriangle = floatArrayOf(0.3f, 0.22f, 0.27f)
 
 private fun eyePlacement(shape: OrbShape): FloatArray = when (shape) {
     OrbShape.Triangle -> EyeTriangle
@@ -520,6 +711,19 @@ private val GazeSpecPie = spring<Float>(dampingRatio = 1f, stiffness = 4000f)
 private val GazeSpecSoft = spring<Float>(dampingRatio = 0.65f, stiffness = 900f)
 private val EyeOpenSpec = spring<Float>(dampingRatio = 0.8f, stiffness = 600f)
 private val BrowSpec = spring<Float>(dampingRatio = 0.8f, stiffness = 500f)
+private val MouthSpec = spring<Float>(dampingRatio = 0.6f, stiffness = 500f)
+private val PressSpec = spring<Float>(dampingRatio = 0.35f, stiffness = 700f)
+private val PerkSpec = spring<Float>(dampingRatio = 0.4f, stiffness = Spring.StiffnessMediumLow)
+private val BlushColor = Color(0xFFFF8FA3)
+
+// Idle antics, and how long each one runs.
+private const val ActNone = 0
+private const val ActHop = 1
+private const val ActWiggle = 2
+private const val ActCurious = 3
+private const val ActYawn = 4
+private const val ActCount = 5
+private val ActDurations = intArrayOf(0, 700, 900, 1500, 2200)
 private val Signs = floatArrayOf(-1f, 1f)
 private val ShadowColors = listOf(Color.Black.copy(alpha = 0.16f), Color.Transparent)
 private val BodyColors = listOf(Color.White, Color(0xFFF5F5F8), Color(0xFFE4E5EB))

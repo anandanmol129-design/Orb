@@ -27,6 +27,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -156,6 +158,15 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var showAppPicker by remember { mutableStateOf(false) }
         var draggingIcon by remember { mutableStateOf(false) }
 
+        // What the orb reacts to as a creature rather than as a menu: a finger resting on it,
+        // each completed tap, each return to the home screen, and a finger anywhere on screen
+        // that it can watch. The watched position is only ever read inside the sphere, so
+        // following a swipe never recomposes this screen.
+        var orbPressed by remember { mutableStateOf(false) }
+        var pokeCount by remember { mutableIntStateOf(0) }
+        var greetCount by remember { mutableIntStateOf(0) }
+        val watched = remember { mutableStateOf<Offset?>(null) }
+
         var orbCX by remember { mutableStateOf(pieRepository.orbCenterX()) }
         var orbCY by remember { mutableStateOf(pieRepository.orbCenterY()) }
         var orbScale by remember { mutableStateOf(pieRepository.orbScale()) }
@@ -169,6 +180,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                 if (event == Lifecycle.Event.ON_RESUME) {
                     orbShape = pieRepository.orbShape()
                     orbFill = pieRepository.orbFill()
+                    greetCount++
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
@@ -284,11 +296,14 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             }
         }
 
-        val lookAt = if (pieOpen && center != Offset.Zero) {
+        // The gaze follows the finger proportionally: a touch near the middle barely moves the
+        // eyes, and they only reach their limit once the finger is out at the slices.
+        val lookAt = if (pieOpen && center != Offset.Zero && deadZone > 0f) {
             val dx = pointer.x - center.x
             val dy = pointer.y - center.y
             val len = hypot(dx, dy).coerceAtLeast(1f)
-            Offset((dx / len).coerceIn(-1f, 1f), (dy / len).coerceIn(-1f, 1f))
+            val reach = (len / deadZone).coerceAtMost(1f)
+            Offset(dx / len * reach, dy / len * reach)
         } else {
             Offset.Zero
         }
@@ -384,9 +399,24 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .pointerInput(Unit) {
+                        // Watch every touch on the home screen without taking it, so the orb
+                        // can follow a finger that is nowhere near it.
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull() ?: continue
+                                watched.value = if (change.pressed) change.position else null
+                            }
+                        }
+                    }
                     .pointerInput(sleeping, items) {
                         var tapCount = 0
                         var tapDebounce: Job? = null
+                        // How long a tap waits for a follow-up tap. Only paid when a double or
+                        // triple tap is actually bound, and measured from finger-up to the next
+                        // finger-down.
+                        val multiTapWindow = minOf(viewConfiguration.doubleTapTimeoutMillis, 220L)
 
                         fun actionFor(gesture: Gesture): GestureAction = when (gesture) {
                             Gesture.Tap -> currentTapAction.value
@@ -394,6 +424,25 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                             Gesture.TripleTap -> currentTripleTapAction.value
                             Gesture.LongPress -> currentLongPressAction.value
                             else -> GestureAction.NoAction
+                        }
+
+                        fun isBound(gesture: Gesture) = actionFor(gesture) !is GestureAction.NoAction
+
+                        // The most taps any binding needs. Once a sequence reaches it there is
+                        // nothing left to wait for.
+                        fun maxBoundTaps(): Int = when {
+                            isBound(Gesture.TripleTap) -> 3
+                            isBound(Gesture.DoubleTap) -> 2
+                            else -> 1
+                        }
+
+                        // The gesture a finished sequence of [count] taps stands for: the
+                        // highest bound one it reaches. Two taps with nothing on double tap are
+                        // an impatient single tap, not a no-op.
+                        fun gestureForTaps(count: Int): Gesture = when {
+                            count >= 3 && isBound(Gesture.TripleTap) -> Gesture.TripleTap
+                            count >= 2 && isBound(Gesture.DoubleTap) -> Gesture.DoubleTap
+                            else -> Gesture.Tap
                         }
 
                         // Runs after a completed tap sequence. Only ToggleSleep can wake a sleeping orb.
@@ -454,6 +503,10 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 return@awaitEachGesture
                             }
 
+                            // A finger is back on the orb: hold the multi-tap countdown until
+                            // it lifts, so a slow second tap is not split into two single taps.
+                            tapDebounce?.cancel()
+
                             // The pie is the orb's response to touch: it is up immediately, no
                             // long-press wait. A quick tap that never picks a slice falls through
                             // to the tap gestures (tap opens search by default).
@@ -462,63 +515,82 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 pieSticky = false
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
+                            orbPressed = true
 
                             var upTime = 0L
                             var wentUp = false
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change =
-                                    event.changes.firstOrNull { it.id == down.id } ?: break
-                                pointer = change.position
-                                if (!sleeping) {
-                                    selected = pieSelectionIndex(
-                                        pointer = pointer,
-                                        center = center,
-                                        count = items.size,
-                                        deadZonePx = deadZone,
-                                    )
-                                }
-                                change.consume()
-                                if (!change.pressed) {
-                                    upTime = change.uptimeMillis
-                                    wentUp = true
-                                    break
-                                }
-                            }
-
-                            pieOpen = false
-                            val index = if (sleeping) -1 else selected
-                            selected = -1
-                            if (!wentUp) return@awaitEachGesture
-
-                            when {
-                                index >= 0 -> handleRelease(index)
-
-                                upTime - down.uptimeMillis <=
-                                        viewConfiguration.longPressTimeoutMillis -> {
-                                    // A short tap and release: count taps so double/triple
-                                    // bindings keep working.
-                                    tapCount++
-                                    tapDebounce?.cancel()
-                                    val count = tapCount
-                                    tapDebounce = scope.launch {
-                                        delay(viewConfiguration.doubleTapTimeoutMillis)
-                                        tapCount = 0
-                                        dispatchTapGesture(
-                                            when {
-                                                count >= 3 -> Gesture.TripleTap
-                                                count == 2 -> Gesture.DoubleTap
-                                                else -> Gesture.Tap
-                                            }
+                            var moved = false
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change =
+                                        event.changes.firstOrNull { it.id == down.id } ?: break
+                                    pointer = change.position
+                                    if ((change.position - down.position).getDistance() >
+                                        viewConfiguration.touchSlop
+                                    ) {
+                                        moved = true
+                                    }
+                                    if (!sleeping) {
+                                        selected = pieSelectionIndex(
+                                            pointer = pointer,
+                                            center = center,
+                                            count = items.size,
+                                            deadZonePx = deadZone,
                                         )
                                     }
+                                    change.consume()
+                                    if (!change.pressed) {
+                                        upTime = change.uptimeMillis
+                                        wentUp = true
+                                        break
+                                    }
+                                }
+                            } finally {
+                                orbPressed = false
+                                pieOpen = false
+                            }
+
+                            val index = if (sleeping) -1 else selected
+                            selected = -1
+                            if (!wentUp) {
+                                tapCount = 0
+                                return@awaitEachGesture
+                            }
+
+                            val quick = upTime - down.uptimeMillis <=
+                                    viewConfiguration.longPressTimeoutMillis
+
+                            when {
+                                // A short press that stayed put is a tap wherever it landed,
+                                // including the orb's rim, which already lies over the slices.
+                                // Without this a tap near the edge launched a slice instead.
+                                quick && (index < 0 || !moved) -> {
+                                    pokeCount++
+                                    tapCount++
+                                    val count = tapCount
+                                    if (count >= maxBoundTaps()) {
+                                        // No binding needs more taps than this: act now.
+                                        tapCount = 0
+                                        dispatchTapGesture(gestureForTaps(count))
+                                    } else {
+                                        tapDebounce = scope.launch {
+                                            delay(multiTapWindow)
+                                            tapCount = 0
+                                            dispatchTapGesture(gestureForTaps(count))
+                                        }
+                                    }
+                                }
+
+                                index >= 0 -> {
+                                    tapCount = 0
+                                    handleRelease(index)
                                 }
 
                                 else -> {
                                     // Held without choosing anything: the menu itself was the
                                     // response. Long-press bindings other than the pie still run.
                                     tapCount = 0
-                                    tapDebounce?.cancel()
                                     if (actionFor(Gesture.LongPress) !is GestureAction.OpenPie) {
                                         dispatchTapGesture(Gesture.LongPress)
                                     }
@@ -536,6 +608,20 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     shape = orbShape,
                     fill = orbFill,
                     playing = musicPlaying.value,
+                    pressed = orbPressed,
+                    pokeCount = pokeCount,
+                    greetCount = greetCount,
+                    attention = {
+                        // Direction to the watched finger, at full deflection once it is a few
+                        // orb-widths away.
+                        watched.value?.let { finger ->
+                            val dx = finger.x - center.x
+                            val dy = finger.y - center.y
+                            val len = hypot(dx, dy).coerceAtLeast(1f)
+                            val reach = (len / (sphereRadius * 2.5f)).coerceAtMost(1f)
+                            Offset(dx / len * reach, dy / len * reach)
+                        }
+                    },
                 )
 
                 if (pieOpen) {

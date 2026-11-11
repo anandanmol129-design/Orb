@@ -190,6 +190,7 @@ fun HomescreenSettingsScreen() {
                     value = wallpaperType,
                     items = listOf(
                         stringResource(R.string.preference_wallpaper_type_system) to WallpaperType.System,
+                        stringResource(R.string.preference_wallpaper_type_random) to WallpaperType.Random,
                         stringResource(R.string.preference_wallpaper_type_water) to WallpaperType.Water,
                         stringResource(R.string.preference_wallpaper_type_prism) to WallpaperType.Prism,
                         stringResource(R.string.preference_wallpaper_type_solar_system) to WallpaperType.SolarSystem,

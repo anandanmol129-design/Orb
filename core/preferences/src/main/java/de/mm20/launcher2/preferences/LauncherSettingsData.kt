@@ -409,6 +409,7 @@ enum class WallpaperType {
     ReactionDiffusion,
     Attractor,
     Topographic,
+    Random,
 }
 
 @Serializable

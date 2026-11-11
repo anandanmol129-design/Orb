@@ -553,6 +553,7 @@
     <string name="preference_wallpaper_type_reaction_diffusion">Reaction–diffusion</string>
     <string name="preference_wallpaper_type_attractor">Strange attractor</string>
     <string name="preference_wallpaper_type_topographic">Topographic lines</string>
+    <string name="preference_wallpaper_type_random">Random (changes on every unlock)</string>
     <string name="wallpaper_games_tic_tac_toe">TIC-TAC-TOE</string>
     <string name="wallpaper_games_2048">2048</string>
     <string name="wallpaper_games_sudoku">SUDOKU</string>

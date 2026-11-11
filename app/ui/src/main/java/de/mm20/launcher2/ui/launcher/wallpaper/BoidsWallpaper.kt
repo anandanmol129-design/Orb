@@ -13,37 +13,50 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.lerp
 import kotlinx.coroutines.isActive
-import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-// Parameters ported verbatim from https://github.com/beneater/boids
-private const val NUM_BOIDS = 80
-private const val VISUAL_RANGE = 75f
+// Flocking rules from https://github.com/beneater/boids. The simulation runs in dp (one world
+// unit = 1dp, converted to pixels only when drawing) so birds, spacing and speed look the same on
+// every screen density. Distances are tuned to the bird size: MIN_DISTANCE is just above the
+// widest wingspan so birds never merge into blobs, and VISUAL_RANGE is ~3x that.
+private const val NUM_BOIDS = 45
+private const val VISUAL_RANGE = 95f // dp
 private const val CENTERING_FACTOR = 0.005f
-private const val MIN_DISTANCE = 20f
+private const val MIN_DISTANCE = 30f // dp
 private const val AVOID_FACTOR = 0.05f
 private const val MATCHING_FACTOR = 0.05f
-private const val SPEED_LIMIT = 15f
-private const val MARGIN = 200f
-private const val TURN_FACTOR = 1f
+private const val SPEED_LIMIT = 5f // dp per frame
+private const val MARGIN = 64f // dp
+private const val TURN_FACTOR = 0.35f // dp per frame^2
+private const val INITIAL_SPEED = 1.7f // dp per frame, max per axis
 
 // Population dynamics: birds breed while in flocks and die in isolation.
-private const val MIN_BOIDS = 20
-private const val MAX_BOIDS = 100
+private const val MIN_BOIDS = 15
+private const val MAX_BOIDS = 60
 private const val FLOCK_MIN_NEIGHBORS = 2
 private const val BREED_INTERVAL = 45f
 private const val ALONE_GRACE = 8f
-private const val OFFSPRING_POS_JITTER = 16f
-private const val OFFSPRING_VEL_JITTER = 2f
+private const val OFFSPRING_POS_JITTER = 14f // dp
+private const val OFFSPRING_VEL_JITTER = 0.7f // dp per frame
 
-private const val BIRD_LENGTH = 16f
-private const val BIRD_HALF_WIDTH = 5f
+// Bird silhouette: nose-to-tail length in dp at mid depth (far birds 0.7x, near birds 1.3x).
+// The fully spread wingspan is 2 * BIRD_WING_REACH * length.
+private const val BIRD_LENGTH = 16f // dp
+private const val BIRD_DEPTH_SCALE_MIN = 0.7f
+private const val BIRD_DEPTH_SCALE_RANGE = 0.6f
+private const val BIRD_WING_REACH = 0.78f
 
-private const val POINTER_RADIUS = 180f
-private const val POINTER_FORCE = 14f
+// Wing flap: phase advance per frame is FLAP_BASE + speed * FLAP_PER_SPEED (radians), and the
+// apparent span oscillates between (1 - 2 * FLAP_DEPTH) and 1 of the full span.
+private const val FLAP_BASE = 0.12f
+private const val FLAP_PER_SPEED = 0.05f
+private const val FLAP_DEPTH = 0.16f
+private const val TWO_PI = (2.0 * Math.PI).toFloat()
+
+private const val POINTER_RADIUS = 70f // dp
+private const val POINTER_FORCE = 5f // dp per frame
 
 private class Bird {
     var x = 0f
@@ -51,6 +64,7 @@ private class Bird {
     var dx = 0f
     var dy = 0f
     var depth = 0f
+    var flapPhase = 0f
 
     // Population state: seconds in a flock since the last offspring (or since it
     // was last alone), seconds alone since it was last in a flock, and the
@@ -63,9 +77,10 @@ private class Bird {
         val random = Random(System.nanoTime())
         x = random.nextFloat()
         y = random.nextFloat()
-        dx = random.nextFloat() * 10f - 5f
-        dy = random.nextFloat() * 10f - 5f
+        dx = (random.nextFloat() * 2f - 1f) * INITIAL_SPEED
+        dy = (random.nextFloat() * 2f - 1f) * INITIAL_SPEED
         depth = random.nextFloat()
+        flapPhase = random.nextFloat() * TWO_PI
     }
 
     fun spawnOffspring(): Bird {
@@ -91,16 +106,21 @@ private class BoidsPointerState {
     }
 }
 
+/** Simulation bounds in dp, plus the px-per-dp factor used to draw and to map pointer input. */
 private class BoidsViewport {
     var w = 0f
     var h = 0f
+    var density = 1f
 }
 
 /**
  * A flock of birds using the classic boids algorithm (cohesion, separation, alignment with a
- * speed limit and edge avoidance), matching the reference implementation at eater.net/boids.
- * Birds breed while in flocks and die in isolation, keeping the flock between MIN_BOIDS and
- * MAX_BOIDS.
+ * speed limit and edge avoidance), after the reference implementation at eater.net/boids.
+ * The simulation runs in dp so the flock looks the same on any screen density. Birds are drawn
+ * as filled swept-wing silhouettes (~11-21dp long, up to ~33dp wingspan) whose wings flap faster
+ * the faster they fly; they are tinted light against the dark upper sky and dark against the
+ * bright horizon so they stay readable everywhere. Birds breed while in flocks and die in
+ * isolation, keeping the flock between MIN_BOIDS and MAX_BOIDS.
  */
 @Composable
 fun BoidsWallpaper(modifier: Modifier = Modifier) {
@@ -123,7 +143,10 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
                         }
                         initialized = true
                     }
-                    pointer.setTarget(Offset(WallpaperPointer.x, WallpaperPointer.y), WallpaperPointer.pressed)
+                    pointer.setTarget(
+                        Offset(WallpaperPointer.x / viewport.density, WallpaperPointer.y / viewport.density),
+                        WallpaperPointer.pressed,
+                    )
                     val dt = if (lastFrameNanos == 0L) {
                         0f
                     } else {
@@ -140,8 +163,10 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
 
     Canvas(modifier = modifier) {
         frame.longValue // redraw is driven by the simulation loop
-        viewport.w = size.width
-        viewport.h = size.height
+        val px = density
+        viewport.density = px
+        viewport.w = size.width / px
+        viewport.h = size.height / px
 
         drawRect(
             brush = Brush.verticalGradient(
@@ -163,39 +188,30 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
             center = sunAt,
         )
 
-        // Flock: depth-hazed gull silhouettes.
+        // Flock: filled swept-wing silhouettes, one reused path.
         for (bird in birds) {
-            val scale = 0.55f + bird.depth * 0.85f
-            val heading = atan2(bird.dy, bird.dx)
-            val dirX = cos(heading)
-            val dirY = sin(heading)
-            val perpX = -sin(heading)
-            val perpY = cos(heading)
-            val len = BIRD_LENGTH * scale
-            val halfW = BIRD_HALF_WIDTH * scale
+            val speed = sqrt(bird.dx * bird.dx + bird.dy * bird.dy)
+            val dirX: Float
+            val dirY: Float
+            if (speed > 1e-4f) {
+                dirX = bird.dx / speed
+                dirY = bird.dy / speed
+            } else {
+                dirX = 1f
+                dirY = 0f
+            }
+            val len = BIRD_LENGTH * (BIRD_DEPTH_SCALE_MIN + bird.depth * BIRD_DEPTH_SCALE_RANGE) * px
+            val span = 1f - FLAP_DEPTH + FLAP_DEPTH * cos(bird.flapPhase)
+            buildBirdPath(scratchPath, bird.x * px, bird.y * px, dirX, dirY, len, span)
 
-            val tip = Offset(bird.x, bird.y)
-            val backLeft = Offset(
-                bird.x - dirX * len + perpX * halfW,
-                bird.y - dirY * len + perpY * halfW,
-            )
-            val notch = Offset(
-                bird.x - dirX * len * 0.55f,
-                bird.y - dirY * len * 0.55f,
-            )
-            val backRight = Offset(
-                bird.x - dirX * len - perpX * halfW,
-                bird.y - dirY * len - perpY * halfW,
-            )
-
-            scratchPath.reset()
-            scratchPath.moveTo(tip.x, tip.y)
-            scratchPath.lineTo(backLeft.x, backLeft.y)
-            scratchPath.lineTo(notch.x, notch.y)
-            scratchPath.lineTo(backRight.x, backRight.y)
-            scratchPath.close()
-            val body = lerp(Color(0xFF6E6278), Color(0xFF0E1320), bird.depth)
-            drawPath(scratchPath, body.copy(alpha = 0.55f + bird.depth * 0.4f))
+            // Light against the dark upper sky, dark against the bright horizon; nearer birds
+            // get the stronger contrast, farther ones fade toward the haze.
+            val skyT = (bird.y / viewport.h).coerceIn(0f, 1f)
+            val brightSky = smoothStep(0.38f, 0.72f, skyT)
+            val onDark = lerp(BirdOnDarkFar, BirdOnDarkNear, bird.depth)
+            val onLight = lerp(BirdOnLightFar, BirdOnLightNear, bird.depth)
+            val body = lerp(onDark, onLight, brightSky)
+            drawPath(scratchPath, body.copy(alpha = 0.72f + bird.depth * 0.28f))
         }
 
         // Vignette.
@@ -207,6 +223,66 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
             ),
         )
     }
+}
+
+private val BirdOnDarkFar = Color(0xFF8E8AA6)
+private val BirdOnDarkNear = Color(0xFFEDE2D8)
+private val BirdOnLightFar = Color(0xFF5E5268)
+private val BirdOnLightNear = Color(0xFF121626)
+
+private fun smoothStep(edge0: Float, edge1: Float, x: Float): Float {
+    val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+/**
+ * Writes a swept-wing bird silhouette into [path] (reset first), centered at ([cx], [cy]) in px
+ * and pointing along the unit vector ([dirX], [dirY]). Shape coordinates are in the bird's frame:
+ * u forward along the heading and v sideways, both in units of [len]. [span] scales how far the
+ * wingtips reach sideways (the flap).
+ */
+private fun buildBirdPath(
+    path: Path,
+    cx: Float,
+    cy: Float,
+    dirX: Float,
+    dirY: Float,
+    len: Float,
+    span: Float,
+) {
+    // World point = center + u * dir + v * perp, with perp = (-dirY, dirX).
+    fun wx(u: Float, v: Float) = cx + (u * dirX - v * dirY) * len
+    fun wy(u: Float, v: Float) = cy + (u * dirY + v * dirX) * len
+
+    val reach = BIRD_WING_REACH * span
+    path.reset()
+    path.moveTo(wx(0.50f, 0f), wy(0.50f, 0f)) // head
+    // Right side, head to tail.
+    path.lineTo(wx(0.30f, 0.07f), wy(0.30f, 0.07f)) // neck
+    path.lineTo(wx(0.12f, 0.10f), wy(0.12f, 0.10f)) // leading wing root
+    path.quadraticTo( // curved leading edge, swept back to the wingtip
+        wx(0.06f, 0.55f * reach), wy(0.06f, 0.55f * reach),
+        wx(-0.24f, reach), wy(-0.24f, reach),
+    )
+    path.quadraticTo( // trailing edge back to the body
+        wx(-0.12f, 0.42f * reach), wy(-0.12f, 0.42f * reach),
+        wx(-0.14f, 0.10f), wy(-0.14f, 0.10f),
+    )
+    path.lineTo(wx(-0.50f, 0.13f), wy(-0.50f, 0.13f)) // tail corner
+    path.lineTo(wx(-0.40f, 0f), wy(-0.40f, 0f)) // tail notch
+    // Left side, mirrored, tail to head.
+    path.lineTo(wx(-0.50f, -0.13f), wy(-0.50f, -0.13f))
+    path.lineTo(wx(-0.14f, -0.10f), wy(-0.14f, -0.10f))
+    path.quadraticTo(
+        wx(-0.12f, -0.42f * reach), wy(-0.12f, -0.42f * reach),
+        wx(-0.24f, -reach), wy(-0.24f, -reach),
+    )
+    path.quadraticTo(
+        wx(0.06f, -0.55f * reach), wy(0.06f, -0.55f * reach),
+        wx(0.12f, -0.10f), wy(0.12f, -0.10f),
+    )
+    path.lineTo(wx(0.30f, -0.07f), wy(0.30f, -0.07f))
+    path.close()
 }
 
 private val SkyColors = listOf(
@@ -235,6 +311,10 @@ private fun stepBoids(birds: List<Bird>, viewport: BoidsViewport, pointer: Boids
 
         boid.x += boid.dx
         boid.y += boid.dy
+
+        val speed = sqrt(boid.dx * boid.dx + boid.dy * boid.dy)
+        boid.flapPhase += FLAP_BASE + speed * FLAP_PER_SPEED
+        if (boid.flapPhase > TWO_PI) boid.flapPhase -= TWO_PI
     }
 }
 

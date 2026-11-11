@@ -15,17 +15,54 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
-import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+// All physics runs in plane units (1.0 = 0.62 * min screen dimension) and simulated seconds
+// (TIME_SCALE simulated seconds per real second).
 private const val GM = 1.1e-3
 private const val TIME_SCALE = 5.0
 private const val WALL_BOUNCE = 0.75
 private const val BODY_BOUNCE = 0.75
+
+/** Longest integration substep; frames are split so fast slingshots stay stable. */
+private const val MAX_SUBSTEP = 0.011
+private const val MAX_SUBSTEPS = 24
+
+/** Hard speed cap so nothing tunnels through walls or runs away. ~4.5 plane units per real second. */
+private const val MAX_SPEED = 0.9
+
+/** Finger attractor: softened inverse-square pull, ~12x the sun's gravity at mid orbits. */
+private const val FINGER_GM = 0.014
+private const val FINGER_SOFTENING = 0.045
+
+/** Outward kick on finger release, strongest for bodies right under the finger. */
+private const val RELEASE_KICK = 0.35
+private const val RELEASE_KICK_RANGE = 0.15
+
+/** Drag-throw velocity multiplier (1.0 = body leaves exactly at finger speed). */
+private const val THROW_GAIN = 1.3
+
+/** After a disturbance bodies fly free for RECOVER_DELAY, then the orbit spring fades in over RECOVER_RAMP. */
+private const val RECOVER_DELAY = 2.5
+private const val RECOVER_RAMP = 2.5
+
+/** Orbit spring: radial stiffness/damping (slightly underdamped) and tangential speed correction. */
+private const val SPRING_K = 1.1
+private const val SPRING_C = 0.85
+private const val TANGENT_K = 1.0
+
+/** Sun spring back to the centre after it has been thrown. */
+private const val SUN_SPRING_K = 0.8
+private const val SUN_SPRING_C = 0.75
+
+/** Visual radii are in min-dimension units; collision radii are the drawn size in plane units. */
+private const val PLANE_SCALE = 0.62f
 
 private val SunColor = Color(0xFFFFD889)
 
@@ -36,15 +73,18 @@ private data class PlanetSpec(
     val ring: Boolean = false,
 )
 
+// Bodies are drawn at twice their original size; orbits are spread out so the inner planet
+// clears the sun and the outer one still fits a portrait screen. Neighbouring orbits can
+// overlap at conjunction, so settled planets pass by each other (see resolveCollisions).
 private val planetSpecs = listOf(
-    PlanetSpec(0.10, 0.011f, Color(0xFF9E9E9E)),
-    PlanetSpec(0.15, 0.016f, Color(0xFFE6C87A)),
-    PlanetSpec(0.20, 0.017f, Color(0xFF4A90D9)),
-    PlanetSpec(0.26, 0.015f, Color(0xFFD9544A)),
-    PlanetSpec(0.34, 0.036f, Color(0xFFD9A066)),
-    PlanetSpec(0.44, 0.032f, Color(0xFFE8D5A3), ring = true),
-    PlanetSpec(0.54, 0.022f, Color(0xFF7AD0E0)),
-    PlanetSpec(0.62, 0.021f, Color(0xFF4A6BD9)),
+    PlanetSpec(0.21, 0.022f, Color(0xFF9E9E9E)),
+    PlanetSpec(0.27, 0.032f, Color(0xFFE6C87A)),
+    PlanetSpec(0.33, 0.034f, Color(0xFF4A90D9)),
+    PlanetSpec(0.39, 0.030f, Color(0xFFD9544A)),
+    PlanetSpec(0.47, 0.072f, Color(0xFFD9A066)),
+    PlanetSpec(0.555, 0.064f, Color(0xFFE8D5A3), ring = true),
+    PlanetSpec(0.63, 0.044f, Color(0xFF7AD0E0)),
+    PlanetSpec(0.69, 0.042f, Color(0xFF4A6BD9)),
 )
 
 private class Body(
@@ -55,12 +95,34 @@ private class Body(
     val visualRadius: Float,
     val color: Color,
     val ring: Boolean = false,
-)
+    /** Home orbit radius around the sun (0 for the sun, whose home is the origin). */
+    val home: Double = 0.0,
+) {
+    val collisionRadius = (visualRadius / PLANE_SCALE).toDouble()
+
+    /** Simulated seconds since the body was last grabbed, pulled, released or hit. */
+    var calm = Double.MAX_VALUE
+}
+
+/** 0 while flying free after a disturbance, easing to 1 as the orbit spring takes over. */
+private fun recoveryWeight(calm: Double): Double {
+    val t = ((calm - RECOVER_DELAY) / RECOVER_RAMP).coerceIn(0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+}
+
+private fun clampSpeed(b: Body) {
+    val sp2 = b.vx * b.vx + b.vy * b.vy
+    if (sp2 > MAX_SPEED * MAX_SPEED) {
+        val s = MAX_SPEED / sqrt(sp2)
+        b.vx *= s
+        b.vy *= s
+    }
+}
 
 private class SolarSystem {
-    val sun = Body(0.0, 0.0, 0.0, 0.0, 0.048f, SunColor)
+    val sun = Body(0.0, 0.0, 0.0, 0.0, 0.096f, SunColor)
     val planets = planetSpecs.map { spec ->
-        Body(0.0, 0.0, 0.0, 0.0, spec.visualRadius, spec.color, spec.ring)
+        Body(0.0, 0.0, 0.0, 0.0, spec.visualRadius, spec.color, spec.ring, spec.radius)
     }
     private val bodies = listOf(sun) + planets
 
@@ -70,23 +132,36 @@ private class SolarSystem {
         sun.y = 0.0
         sun.vx = 0.0
         sun.vy = 0.0
-        planets.forEachIndexed { i, p ->
-            val spec = planetSpecs[i]
+        sun.calm = Double.MAX_VALUE
+        planets.forEach { p ->
             val angle = random.nextDouble() * 2.0 * Math.PI
-            val r = spec.radius
+            val r = p.home
             p.x = r * cos(angle)
             p.y = r * sin(angle)
             val v = sqrt(GM / r)
             p.vx = -v * sin(angle)
             p.vy = v * cos(angle)
+            p.calm = Double.MAX_VALUE
         }
     }
 
-    fun step(dt: Double, dragged: Body?) {
-        val steps = 4
+    /**
+     * Advances the simulation by [dt] simulated seconds. When [attract] is set, every free planet
+     * is pulled hard toward ([fingerX], [fingerY]) with no damping, so it whips around the finger.
+     * Otherwise each planet, after a short free flight, is sprung back onto its home orbit.
+     */
+    fun step(dt: Double, dragged: Body?, attract: Boolean, fingerX: Double, fingerY: Double) {
+        val steps = ceil(dt / MAX_SUBSTEP).toInt().coerceIn(1, MAX_SUBSTEPS)
         val h = dt / steps
         repeat(steps) {
             if (dragged !== sun) {
+                sun.calm += h
+                val w = recoveryWeight(sun.calm)
+                if (w > 0.0) {
+                    sun.vx += (-SUN_SPRING_K * sun.x - SUN_SPRING_C * sun.vx) * w * h
+                    sun.vy += (-SUN_SPRING_K * sun.y - SUN_SPRING_C * sun.vy) * w * h
+                }
+                clampSpeed(sun)
                 sun.x += sun.vx * h
                 sun.y += sun.vy * h
             }
@@ -95,12 +170,41 @@ private class SolarSystem {
                 val dx = p.x - sun.x
                 val dy = p.y - sun.y
                 val r2 = dx * dx + dy * dy
-                val r = sqrt(r2)
-                val r3 = maxOf(r2 * r, 1e-9)
-                val ax = -GM * dx / r3
-                val ay = -GM * dy / r3
+                val r = sqrt(r2).coerceAtLeast(1e-4)
+                val g = GM / maxOf(r2 * r, 1e-9)
+                var ax = -g * dx
+                var ay = -g * dy
+                if (attract) {
+                    // Sharp, softened 1/d^2 pull toward the finger; no damping, so bodies
+                    // overshoot and slingshot around it.
+                    val fx = fingerX - p.x
+                    val fy = fingerY - p.y
+                    val d2 = fx * fx + fy * fy + FINGER_SOFTENING * FINGER_SOFTENING
+                    val inv = FINGER_GM / (d2 * sqrt(d2))
+                    ax += fx * inv
+                    ay += fy * inv
+                    p.calm = 0.0
+                } else {
+                    p.calm += h
+                    val w = recoveryWeight(p.calm)
+                    if (w > 0.0) {
+                        // Orbit spring in the sun's frame: radial spring to the home radius,
+                        // tangential pull toward prograde circular speed.
+                        val ux = dx / r
+                        val uy = dy / r
+                        val rvx = p.vx - sun.vx
+                        val rvy = p.vy - sun.vy
+                        val vr = rvx * ux + rvy * uy
+                        val vt = -rvx * uy + rvy * ux
+                        val ar = -SPRING_K * (r - p.home) - SPRING_C * vr
+                        val at = TANGENT_K * (sqrt(GM / r) - vt)
+                        ax += (ar * ux - at * uy) * w
+                        ay += (ar * uy + at * ux) * w
+                    }
+                }
                 p.vx += ax * h
                 p.vy += ay * h
+                clampSpeed(p)
                 p.x += p.vx * h
                 p.y += p.vy * h
             }
@@ -108,14 +212,20 @@ private class SolarSystem {
         }
     }
 
-    /** Body-to-body collisions: separate overlaps, then bounce approaching pairs apart. */
+    /**
+     * Body-to-body collisions: separate overlaps, then bounce approaching pairs apart.
+     * Only pairs involving the sun or a body still in its free-flight phase collide, so
+     * settled planets on neighbouring orbits glide past each other instead of jostling.
+     * A hit body inherits the striker's disturbance, so knock-ons slingshot too.
+     */
     private fun resolveCollisions(dragged: Body?) {
         for (i in bodies.indices) {
             val a = bodies[i]
             for (j in i + 1 until bodies.size) {
                 val b = bodies[j]
-                val ra = (a.visualRadius / 0.62f).toDouble()
-                val rb = (b.visualRadius / 0.62f).toDouble()
+                if (a !== sun && a.calm >= RECOVER_DELAY && b.calm >= RECOVER_DELAY) continue
+                val ra = a.collisionRadius
+                val rb = b.collisionRadius
                 val dx = b.x - a.x
                 val dy = b.y - a.y
                 val dist = sqrt(dx * dx + dy * dy)
@@ -140,62 +250,52 @@ private class SolarSystem {
                     a.vy -= impulse * invMassA * ny
                     b.vx += impulse * invMassB * nx
                     b.vy += impulse * invMassB * ny
+                    val c = min(a.calm, b.calm)
+                    a.calm = c
+                    b.calm = c
                 }
             }
         }
     }
 
+    /** Finger lifted after pulling: kick nearby planets outward so the swarm bursts apart. */
+    fun releaseFinger(fingerX: Double, fingerY: Double) {
+        for (p in planets) {
+            val dx = p.x - fingerX
+            val dy = p.y - fingerY
+            val d = sqrt(dx * dx + dy * dy)
+            if (d < 1e-6) continue
+            val q = d / RELEASE_KICK_RANGE
+            val k = RELEASE_KICK / (1.0 + q * q)
+            p.vx += dx / d * k
+            p.vy += dy / d * k
+            clampSpeed(p)
+            p.calm = 0.0
+        }
+    }
+
+    /**
+     * Dragged body released with finger velocity ([vx], [vy]) in plane units per real second.
+     * Throws carry straight through at finger speed (times [THROW_GAIN]); the orbit spring
+     * brings the body home afterwards. A gentle drop gets circular speed so it doesn't fall in.
+     */
     fun release(body: Body, vx: Double, vy: Double, isSun: Boolean) {
-        if (isSun) {
-            val sp = sqrt(vx * vx + vy * vy)
-            val max = 0.30
-            if (sp > max) {
-                body.vx = vx / sp * max
-                body.vy = vy / sp * max
-            } else {
-                body.vx = vx
-                body.vy = vy
+        val tvx = vx / TIME_SCALE * THROW_GAIN
+        val tvy = vy / TIME_SCALE * THROW_GAIN
+        body.calm = 0.0
+        body.vx = tvx
+        body.vy = tvy
+        if (!isSun) {
+            val dx = body.x - sun.x
+            val dy = body.y - sun.y
+            val r = sqrt(dx * dx + dy * dy).coerceAtLeast(0.02)
+            val vCirc = sqrt(GM / r)
+            if (sqrt(tvx * tvx + tvy * tvy) < 0.4 * vCirc) {
+                body.vx = sun.vx - dy / r * vCirc
+                body.vy = sun.vy + dx / r * vCirc
             }
-            return
         }
-
-        val dx = body.x - sun.x
-        val dy = body.y - sun.y
-        val r = sqrt(dx * dx + dy * dy).coerceAtLeast(0.02)
-        val ux = dx / r
-        val uy = dy / r
-        val tx = -uy
-        val ty = ux
-        val vCirc = sqrt(GM / r)
-
-        val vr = vx * ux + vy * uy
-        val vt = vx * tx + vy * ty
-        val throwSpeed = sqrt(vx * vx + vy * vy)
-
-        if (throwSpeed < 0.4 * vCirc) {
-            body.vx = tx * vCirc
-            body.vy = ty * vCirc
-            return
-        }
-
-        var newVt = vt
-        val minVt = 0.3 * vCirc
-        if (abs(newVt) < minVt) newVt = minVt * (if (vt >= 0) 1.0 else -1.0)
-        val maxVt = 1.6 * vCirc
-        if (abs(newVt) > maxVt) newVt = maxVt * (if (newVt >= 0) 1.0 else -1.0)
-        val maxVr = 0.8 * vCirc
-        var newVr = vr.coerceIn(-maxVr, maxVr)
-
-        val vEsc = sqrt(2.0) * vCirc
-        var speed = sqrt(newVt * newVt + newVr * newVr)
-        if (speed > 0.9 * vEsc) {
-            val s = 0.9 * vEsc / speed
-            newVt *= s
-            newVr *= s
-        }
-
-        body.vx = newVt * tx + newVr * ux
-        body.vy = newVt * ty + newVr * uy
+        clampSpeed(body)
     }
 
     /** The screen edges are walls: bodies bounce back into view instead of leaving. */
@@ -211,7 +311,7 @@ private class SolarSystem {
         val maxY = maxOf(c0[1], c1[1], c2[1], c3[1])
         for (body in bodies) {
             if (body === dragged) continue
-            val m = (body.visualRadius / 0.62f).toDouble()
+            val m = body.collisionRadius
             if (body.x < minX + m) {
                 body.x = minX + m
                 body.vx = abs(body.vx) * WALL_BOUNCE
@@ -249,7 +349,7 @@ private class SolarCamera {
         cx = width / 2f
         cy = height / 2f
         minDim = minOf(width, height)
-        s = minDim * 0.62f
+        s = minDim * PLANE_SCALE
     }
 
     fun planeToScreen(x: Double, y: Double): FloatArray {
@@ -273,6 +373,10 @@ private class SolarCamera {
 private class DragState {
     var body: Body? = null
     var active = false
+    /** Pressed on empty space: the finger is an attractor at ([fingerX], [fingerY]). */
+    var attracting = false
+    var fingerX = 0.0
+    var fingerY = 0.0
     var wasPressed = false
     var lastX = 0.0
     var lastY = 0.0
@@ -281,7 +385,11 @@ private class DragState {
     var lastUptime = 0L
 }
 
-/** Drag-and-fling body interaction, fed from [WallpaperPointer] each frame. */
+/**
+ * Touch handling, fed from [WallpaperPointer] each frame. Pressing on a body grabs it
+ * (drag and fling); pressing on empty space turns the finger into a strong attractor for
+ * the planets, and lifting it bursts them outward.
+ */
 private fun stepDrag(
     drag: DragState,
     system: SolarSystem,
@@ -292,16 +400,21 @@ private fun stepDrag(
 ) {
     if (pressed && !drag.wasPressed) {
         drag.body = pickBody(position, system, camera)
+        val p = camera.screenToPlane(position.x, position.y)
         if (drag.body != null) {
             drag.active = true
             drag.body!!.vx = 0.0
             drag.body!!.vy = 0.0
-            val p = camera.screenToPlane(position.x, position.y)
+            drag.body!!.calm = 0.0
             drag.lastX = p[0]
             drag.lastY = p[1]
             drag.velX = 0.0
             drag.velY = 0.0
             drag.lastUptime = uptimeMillis
+        } else if (camera.w > 0f) {
+            drag.attracting = true
+            drag.fingerX = p[0]
+            drag.fingerY = p[1]
         }
     } else if (pressed && drag.active) {
         val p = camera.screenToPlane(position.x, position.y)
@@ -314,13 +427,21 @@ private fun stepDrag(
         }
         drag.body!!.x = p[0]
         drag.body!!.y = p[1]
+        drag.body!!.calm = 0.0
         drag.lastX = p[0]
         drag.lastY = p[1]
         drag.lastUptime = uptimeMillis
+    } else if (pressed && drag.attracting) {
+        val p = camera.screenToPlane(position.x, position.y)
+        drag.fingerX = p[0]
+        drag.fingerY = p[1]
     } else if (!pressed && drag.active) {
         system.release(drag.body!!, drag.velX, drag.velY, drag.body === system.sun)
         drag.active = false
         drag.body = null
+    } else if (!pressed && drag.attracting) {
+        system.releaseFinger(drag.fingerX, drag.fingerY)
+        drag.attracting = false
     }
     drag.wasPressed = pressed
 }
@@ -333,6 +454,14 @@ private class Star(
     val brightness: Float,
 )
 
+/**
+ * A tilted, perspective view of a small solar system. Touch interaction:
+ * - press on the sun or a planet to grab it; drag and let go to fling it at finger speed;
+ * - press on empty space to turn the finger into a strong attractor: planets snap in, whip
+ *   around it and slingshot out; lifting the finger bursts the swarm outward.
+ * After a short free flight every disturbed body is sprung back onto its home orbit (and a
+ * thrown sun back to the centre). Screen edges are bouncy walls.
+ */
 @Composable
 fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
     val resetGeneration = rememberResetGeneration()
@@ -345,6 +474,7 @@ fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
     LaunchedEffect(resetGeneration) {
         system.reset()
         drag.active = false
+        drag.attracting = false
         drag.body = null
     }
 
@@ -355,7 +485,7 @@ fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
                 val dt = if (last == 0L) 0.0 else (now - last) / 1_000_000_000.0
                 last = now
                 if (dt > 0.0 && dt < 0.1) {
-                    system.step(dt * TIME_SCALE, drag.body)
+                    system.step(dt * TIME_SCALE, drag.body, drag.attracting, drag.fingerX, drag.fingerY)
                     system.confine(camera, drag.body)
                 }
                 stepDrag(

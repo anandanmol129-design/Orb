@@ -19,7 +19,9 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private const val MAX_TRAIL = 400
+private const val TRAIL_BANDS = 4
+private const val BAND_LEN = 120
+private const val MAX_TRAIL = TRAIL_BANDS * BAND_LEN
 
 private class TrailPalette(
     val bandColors: List<Color>,
@@ -38,18 +40,6 @@ private val CoolTrailPalette = TrailPalette(
     bandWidths = floatArrayOf(6f, 4.5f, 3f, 1.8f),
     headColor = Color(0xFFBFE6FF),
     glowColor = Color(0xFFDCEBFF),
-)
-
-private val WarmTrailPalette = TrailPalette(
-    bandColors = listOf(
-        Color(0xFF8C3A2E).copy(alpha = 0.10f),
-        Color(0xFFD0792B).copy(alpha = 0.18f),
-        Color(0xFFFFC44D).copy(alpha = 0.35f),
-        Color(0xFFFFF0D2).copy(alpha = 0.8f),
-    ),
-    bandWidths = floatArrayOf(5f, 3.8f, 2.5f, 1.5f),
-    headColor = Color(0xFFFFF0D2),
-    glowColor = Color(0xFFFFF0D2),
 )
 
 private class DoublePendulum {
@@ -72,14 +62,14 @@ private class PendulumViewport {
 }
 
 /**
- * A chaotic double pendulum on a black background, with fading glow trails tracing both bobs.
+ * A chaotic double pendulum on a black background, with a fading light-painting trail tracing
+ * the outer bob. The inner bob only ever sweeps a circle, so it gets no trail.
  */
 @Composable
 fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
     val pendulum = remember { DoublePendulum() }
     val viewport = remember { PendulumViewport() }
     val trail = remember { mutableListOf<Offset>() }
-    val trail1 = remember { mutableListOf<Offset>() }
     val frame = remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(Unit) {
@@ -102,8 +92,6 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
                     pendulum.bob2X = (pendulum.bob1X + l2 * sin(pendulum.theta2)).toFloat()
                     pendulum.bob2Y = (pendulum.bob1Y + l2 * cos(pendulum.theta2)).toFloat()
 
-                    trail1.add(Offset(pendulum.bob1X, pendulum.bob1Y))
-                    while (trail1.size > MAX_TRAIL) trail1.removeAt(0)
                     trail.add(Offset(pendulum.bob2X, pendulum.bob2Y))
                     while (trail.size > MAX_TRAIL) trail.removeAt(0)
                 }
@@ -126,8 +114,7 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
             ),
         )
 
-        // Light-painting trails: warm upper bob path first, cool lower bob path on top.
-        drawLightTrail(trail1, WarmTrailPalette)
+        // Light-painting trail of the outer bob.
         drawLightTrail(trail, CoolTrailPalette)
 
         val anchor = Offset(pendulum.anchorX, pendulum.anchorY)
@@ -205,9 +192,9 @@ private fun DrawScope.drawLightTrail(trail: List<Offset>, palette: TrailPalette)
     // Light-painting path: a wide dim tail melting into a hot thin head.
     val n = trail.size
     if (n >= 2) {
-        for (b in 0 until 4) {
-            val end = n - (3 - b) * 100
-            val start = (end - 100).coerceAtLeast(0)
+        for (b in 0 until TRAIL_BANDS) {
+            val end = n - (TRAIL_BANDS - 1 - b) * BAND_LEN
+            val start = (end - BAND_LEN).coerceAtLeast(0)
             if (end - start < 2) continue
             val path = Path().apply {
                 moveTo(trail[start].x, trail[start].y)

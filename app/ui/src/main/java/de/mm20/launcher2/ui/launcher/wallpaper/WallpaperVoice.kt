@@ -1,7 +1,7 @@
 package de.mm20.launcher2.ui.launcher.wallpaper
 
 /**
- * What the voice assistant and the media stream are doing right now, mirrored here by the Orb
+ * What the voice assistant is doing right now, mirrored here by the Orb
  * home component so wallpapers (which live outside its composition) can react to it. Plain
  * volatile fields, read once per frame from a wallpaper's frame loop, like [WallpaperPointer].
  */
@@ -19,8 +19,4 @@ object WallpaperVoice {
     /** Normalised microphone level (0..1); only non-zero while [state] is [LISTENING]. */
     @Volatile
     var level = 0f
-
-    /** True while anything is playing on the music stream. No amplitude is available for it. */
-    @Volatile
-    var musicPlaying = false
 }

@@ -4,12 +4,15 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -23,12 +26,15 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import de.mm20.launcher2.ui.R
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -76,6 +82,11 @@ private data class GamesLayout(
 
 private data class CheckersMove(val from: Int, val to: Int, val capture: Boolean)
 
+/**
+ * Board games on a card over a dark backdrop: tic-tac-toe, 2048, sudoku, connect four, checkers
+ * and minesweeper, played by tapping and swiping the wallpaper.
+ * While music plays, the two soft backdrop glows behind the card swell faintly on the beat.
+ */
 @Composable
 fun GamesWallpaper(modifier: Modifier = Modifier) {
     var state by remember { mutableStateOf(GamesState()) }
@@ -129,17 +140,80 @@ fun GamesWallpaper(modifier: Modifier = Modifier) {
         }
     }
 
+    val beat = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val pulse = MusicPulse()
+        while (isActive) {
+            // Silent: no frame callbacks at all, just a cheap check at the music poll rate.
+            if (!WallpaperMusic.playing && pulse.groove == 0f) {
+                delay(250L)
+                continue
+            }
+            withFrameNanos { now ->
+                pulse.update(now)
+                beat.floatValue = pulse.beat
+            }
+        }
+    }
+
+    Box(modifier = modifier) {
+        // The backdrop lives in its own layer so the beat only redraws these three shapes,
+        // never the card and its text.
+        Canvas(modifier = Modifier.matchParentSize().graphicsLayer()) {
+            drawGamesBackdrop(beat.floatValue)
+        }
+        GamesCard(
+            state = state,
+            viewportSize = viewportSize,
+            boardPulse = boardPulse,
+            titleFade = titleFade,
+            gameName = gameNames[state.game.ordinal],
+            optionsLabel = optionsLabel,
+            optionValue = optionValue,
+            status = status,
+            newGameLabel = newGameLabel,
+            instruction = instruction,
+            modifier = Modifier.matchParentSize(),
+        )
+    }
+}
+
+private val BACKDROP_BRUSH = Brush.verticalGradient(listOf(Color(0xFF090D1B), Color(0xFF171A35), Color(0xFF090D1B)))
+private val GLOW_BLUE = Color(0x263E85FF)
+private val GLOW_VIOLET = Color(0x243A1F9A)
+
+/** Backdrop gradient and two soft glows; on a music [beat] the glows brighten and swell a touch. */
+private fun DrawScope.drawGamesBackdrop(beat: Float) {
+    drawRect(BACKDROP_BRUSH)
+    // At beat 0 both factors are 1, so the backdrop is exactly the silent one.
+    val lift = 1f + 0.35f * beat
+    val grow = 1f + 0.04f * beat
+    drawCircle(GLOW_BLUE.copy(alpha = GLOW_BLUE.alpha * lift), size.minDimension * .42f * grow, Offset(size.width * .15f, size.height * .28f))
+    drawCircle(GLOW_VIOLET.copy(alpha = GLOW_VIOLET.alpha * lift), size.minDimension * .48f * grow, Offset(size.width * .86f, size.height * .76f))
+}
+
+@Composable
+private fun GamesCard(
+    state: GamesState,
+    viewportSize: androidx.compose.runtime.MutableState<Size>,
+    boardPulse: Animatable<Float, *>,
+    titleFade: Animatable<Float, *>,
+    gameName: String,
+    optionsLabel: String,
+    optionValue: String,
+    status: String,
+    newGameLabel: String,
+    instruction: String,
+    modifier: Modifier,
+) {
     Canvas(modifier = modifier.onSizeChanged { viewportSize.value = Size(it.width.toFloat(), it.height.toFloat()) }) {
         val layout = gamesLayout(size.width, size.height, state.optionsOpen)
-        drawRect(Brush.verticalGradient(listOf(Color(0xFF090D1B), Color(0xFF171A35), Color(0xFF090D1B))))
-        drawCircle(Color(0x263E85FF), size.minDimension * .42f, Offset(size.width * .15f, size.height * .28f))
-        drawCircle(Color(0x243A1F9A), size.minDimension * .48f, Offset(size.width * .86f, size.height * .76f))
         drawRoundRect(Brush.verticalGradient(listOf(Color(0xF51B2340), Color(0xF20F172B))), layout.card.topLeft, Size(layout.card.width, layout.card.height), androidx.compose.ui.geometry.CornerRadius(34f))
         drawRoundRect(Color(0x554D6299), layout.card.topLeft, Size(layout.card.width, layout.card.height), androidx.compose.ui.geometry.CornerRadius(34f), style = Stroke(1.4f))
         drawRoundRect(Brush.horizontalGradient(listOf(Color(0xFF5EC8FF), Color(0xFF8B7BFF), Color(0xFFFFC46B))), Offset(layout.card.left + layout.card.width * .34f, layout.card.top + layout.card.height * .035f), Size(layout.card.width * .32f, 4f), androidx.compose.ui.geometry.CornerRadius(4f))
 
         drawArrowButton(layout.previous, "‹")
-        drawText(gameNames[state.game.ordinal], layout.title.center, layout.card.width * .052f, Color(0xFFF7F8FF).copy(alpha = titleFade.value), true)
+        drawText(gameName, layout.title.center, layout.card.width * .052f, Color(0xFFF7F8FF).copy(alpha = titleFade.value), true)
         drawArrowButton(layout.next, "›")
         if (state.optionsOpen) {
             drawText(optionsLabel, Offset(layout.card.center.x, layout.optionValue.center.y - layout.optionValue.height * .8f), layout.card.width * .027f, Color(0xFFAAB5DC), true)

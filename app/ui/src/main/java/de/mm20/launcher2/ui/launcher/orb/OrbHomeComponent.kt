@@ -131,7 +131,6 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         // Mirror the assistant's state for the wallpaper layer, which sits outside this tree.
         SideEffect {
             WallpaperVoice.level = amplitude
-            WallpaperVoice.musicPlaying = musicPlaying.value
             WallpaperVoice.state = when (voiceState) {
                 VoiceUiState.Idle -> WallpaperVoice.IDLE
                 VoiceUiState.Listening, is VoiceUiState.Confirm -> WallpaperVoice.LISTENING

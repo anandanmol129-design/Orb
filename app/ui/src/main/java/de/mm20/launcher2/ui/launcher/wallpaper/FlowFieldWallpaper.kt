@@ -38,11 +38,14 @@ import android.graphics.Canvas as BitmapCanvas
  * to magenta, slowly shifting over minutes); the fastest currents flare warm gold. Holding a
  * finger stirs a vortex that wraps the strands around it, dragging pushes the flow along, and on
  * release the vortex dies away over about a second.
+ *
+ * While music plays, the particles surge a little faster and the strands brighten slightly on each beat.
  */
 @Composable
 fun FlowFieldWallpaper(modifier: Modifier = Modifier) {
     val sim = remember { FlowFieldSim() }
     val frame = remember { mutableLongStateOf(0L) }
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(Unit) {
         var start = 0L
@@ -52,7 +55,8 @@ fun FlowFieldWallpaper(modifier: Modifier = Modifier) {
                 if (start == 0L) start = now
                 val rawDt = if (last == 0L) 1f / 60f else (now - last) / 1_000_000_000f
                 last = now
-                sim.step(rawDt, (now - start) / 1_000_000_000f)
+                pulse.update(now)
+                sim.step(rawDt, (now - start) / 1_000_000_000f, pulse.beat)
                 frame.longValue = now
             }
         }
@@ -97,6 +101,10 @@ private const val VORTEX_ATTRACT = 0.18f
 private const val DRAG_PUSH = 0.9f
 
 private const val STROKE = 1.1f // in buffer pixels
+
+// Music: extra advection speed and strand alpha at the peak of a beat.
+private const val BEAT_SURGE = 0.3f
+private const val BEAT_GLOW = 0.15f
 
 // Trail decay: multiplicative with time constant FADE_TAU, plus a fixed per-frame subtraction
 // (in 0..255 units) so 8-bit rounding can never leave a permanent residue.
@@ -162,6 +170,10 @@ private class FlowFieldSim {
             ),
         )
     }
+    private val strandAlpha = IntArray(BUCKETS) { b ->
+        if (b == GOLD_BUCKET) FLOW_GOLD_ALPHA else FLOW_LEVEL_ALPHA[b % LEVELS]
+    }
+    private var strandBoost = 0f
     private val strandPaints = Array(BUCKETS) { b ->
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             if (b == GOLD_BUCKET) {
@@ -267,14 +279,15 @@ private class FlowFieldSim {
         for (p in 0 until PARTICLE_COUNT) spawn(p, scattered = true)
     }
 
-    fun step(rawDt: Float, t: Float) {
+    fun step(rawDt: Float, t: Float, beat: Float) {
         val target = backCanvas ?: return
         val source = front ?: return
         val dt = rawDt.coerceIn(0f, MAX_DT)
 
         updatePointer(dt)
         computeField(t)
-        moveParticles(dt, t)
+        moveParticles(dt, t, 1f + BEAT_SURGE * beat)
+        applyBeatGlow(beat)
 
         fadePaint.colorFilter = fadeFilters[fadeIndex(rawDt)]
         target.drawBitmap(source, 0f, 0f, fadePaint)
@@ -286,6 +299,14 @@ private class FlowFieldSim {
         val fc = frontCanvas
         frontCanvas = backCanvas
         backCanvas = fc
+    }
+
+    /** Brightens the strand paints a touch on the beat; touches nothing while the music is silent. */
+    private fun applyBeatGlow(beat: Float) {
+        if (beat == 0f && strandBoost == 0f) return
+        strandBoost = beat
+        val k = 1f + BEAT_GLOW * beat
+        for (b in 0 until BUCKETS) strandPaints[b].alpha = min(255, (strandAlpha[b] * k).roundToInt())
     }
 
     private fun fadeIndex(dt: Float): Int {
@@ -375,7 +396,7 @@ private class FlowFieldSim {
         }
     }
 
-    private fun moveParticles(dt: Float, t: Float) {
+    private fun moveParticles(dt: Float, t: Float, surge: Float) {
         val inv = 1f / cell
         val stride = cols + 1
         val maxGx = cols - 0.001f
@@ -427,8 +448,8 @@ private class FlowFieldSim {
                 vy += dragVy * push
             }
 
-            val nx = x + vx * dt
-            val ny = y + vy * dt
+            val nx = x + vx * surge * dt
+            val ny = y + vy * surge * dt
             if (nx < -2f || ny < -2f || nx > bw + 2f || ny > bh + 2f) {
                 spawn(p, scattered = false)
                 continue

@@ -23,6 +23,9 @@ private const val TRAIL_BANDS = 4
 private const val BAND_LEN = 120
 private const val MAX_TRAIL = TRAIL_BANDS * BAND_LEN
 
+/** Music: every fourth beat speeds the bobs up this much (times groove) if energy has drifted low. */
+private const val BAR_NUDGE = 0.03
+
 private class TrailPalette(
     val bandColors: List<Color>,
     val bandWidths: FloatArray,
@@ -64,6 +67,7 @@ private class PendulumViewport {
 /**
  * A chaotic double pendulum on a black background, with a fading light-painting trail tracing
  * the outer bob. The inner bob only ever sweeps a circle, so it gets no trail.
+ * While music plays the trail and bobs brighten on each beat, with a gentle push on every fourth.
  */
 @Composable
 fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
@@ -71,18 +75,26 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
     val viewport = remember { PendulumViewport() }
     val trail = remember { mutableListOf<Offset>() }
     val frame = remember { mutableLongStateOf(0L) }
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(Unit) {
         var last = 0L
+        var lastBeat = 0f
+        var beatCount = 0
         while (isActive) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0.0 else (now - last) / 1_000_000_000.0
                 last = now
+                pulse.update(now)
+                val onset = pulse.beat > 0f && lastBeat == 0f
+                lastBeat = pulse.beat
+                if (pulse.groove == 0f) beatCount = 0
                 if (viewport.w > 0f && dt > 0.0) {
                     val minDim = minOf(viewport.w, viewport.h)
                     val l1 = minDim * 0.24
                     val l2 = minDim * 0.24
                     val g = l1 * 20.0
+                    if (onset && beatCount++ % 4 == 0) barNudge(pendulum, l1, l2, g, pulse.groove)
                     step(pendulum, l1, l2, g, dt.coerceAtMost(0.05))
 
                     pendulum.anchorX = viewport.w / 2f
@@ -114,8 +126,10 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
             ),
         )
 
+        val beat = pulse.beat
+
         // Light-painting trail of the outer bob.
-        drawLightTrail(trail, CoolTrailPalette)
+        drawLightTrail(trail, CoolTrailPalette, beat)
 
         val anchor = Offset(pendulum.anchorX, pendulum.anchorY)
         val bob1 = Offset(pendulum.bob1X, pendulum.bob1Y)
@@ -146,26 +160,28 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
             style = Stroke(width = 1f),
         )
 
-        // Glass bobs.
+        // Glass bobs; their halos swell and brighten slightly on the music beat.
+        val halo1 = 14f * (1f + 0.1f * beat)
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(Color(0xFF9CC0FF).copy(alpha = 0.4f), Color.Transparent),
+                colors = listOf(Color(0xFF9CC0FF).copy(alpha = 0.4f + 0.06f * beat), Color.Transparent),
                 center = bob1,
-                radius = 14f,
+                radius = halo1,
             ),
-            radius = 14f,
+            radius = halo1,
             center = bob1,
             blendMode = BlendMode.Plus,
         )
         drawCircle(Color(0xFFD6E4F8), radius = 2.5f, center = bob1, blendMode = BlendMode.Plus)
 
+        val halo2 = 22f * (1f + 0.1f * beat)
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(Color.White.copy(alpha = 0.6f), Color.Transparent),
+                colors = listOf(Color.White.copy(alpha = 0.6f + 0.08f * beat), Color.Transparent),
                 center = bob2,
-                radius = 22f,
+                radius = halo2,
             ),
-            radius = 22f,
+            radius = halo2,
             center = bob2,
             blendMode = BlendMode.Plus,
         )
@@ -188,7 +204,9 @@ fun DoublePendulumWallpaper(modifier: Modifier = Modifier) {
     }
 }
 
-private fun DrawScope.drawLightTrail(trail: List<Offset>, palette: TrailPalette) {
+/** [beat] (0..1, 0 without music) lifts the trail's brightness ~12% and its head glow a little. */
+private fun DrawScope.drawLightTrail(trail: List<Offset>, palette: TrailPalette, beat: Float) {
+    val lift = 1f + 0.12f * beat
     // Light-painting path: a wide dim tail melting into a hot thin head.
     val n = trail.size
     if (n >= 2) {
@@ -200,9 +218,10 @@ private fun DrawScope.drawLightTrail(trail: List<Offset>, palette: TrailPalette)
                 moveTo(trail[start].x, trail[start].y)
                 for (i in start + 1 until end) lineTo(trail[i].x, trail[i].y)
             }
+            val color = palette.bandColors[b]
             drawPath(
                 path = path,
-                color = palette.bandColors[b],
+                color = if (beat > 0f) color.copy(alpha = (color.alpha * lift).coerceAtMost(1f)) else color,
                 style = Stroke(width = palette.bandWidths[b]),
                 blendMode = BlendMode.Plus,
             )
@@ -214,11 +233,11 @@ private fun DrawScope.drawLightTrail(trail: List<Offset>, palette: TrailPalette)
         val head = trail[n - 1]
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(palette.headColor.copy(alpha = 0.35f), Color.Transparent),
+                colors = listOf(palette.headColor.copy(alpha = 0.35f * lift), Color.Transparent),
                 center = head,
-                radius = 26f,
+                radius = 26f * lift,
             ),
-            radius = 26f,
+            radius = 26f * lift,
             center = head,
             blendMode = BlendMode.Plus,
         )
@@ -233,6 +252,24 @@ private fun DrawScope.drawLightTrail(trail: List<Offset>, palette: TrailPalette)
             )
         }
     }
+}
+
+/**
+ * A downbeat push for the music: speeds both arms up by [BAR_NUDGE] * [groove], but only while the
+ * total energy sits below the release energy (both arms horizontal, at rest, which is 0 here), so
+ * it makes up integrator drift and can never pump the swing beyond where it started.
+ */
+private fun barNudge(pendulum: DoublePendulum, l1: Double, l2: Double, g: Double, groove: Float) {
+    val w1 = pendulum.omega1
+    val w2 = pendulum.omega2
+    // Unit masses, matching the equations of motion in step.
+    val kinetic = l1 * l1 * w1 * w1 + 0.5 * l2 * l2 * w2 * w2 +
+            l1 * l2 * w1 * w2 * cos(pendulum.theta1 - pendulum.theta2)
+    val potential = -2.0 * g * l1 * cos(pendulum.theta1) - g * l2 * cos(pendulum.theta2)
+    if (kinetic + potential >= 0.0) return
+    val k = 1.0 + BAR_NUDGE * groove
+    pendulum.omega1 = w1 * k
+    pendulum.omega2 = w2 * k
 }
 
 private fun step(

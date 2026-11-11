@@ -461,6 +461,7 @@ private class Star(
  *   around it and slingshot out; lifting the finger bursts the swarm outward.
  * After a short free flight every disturbed body is sprung back onto its home orbit (and a
  * thrown sun back to the centre). Screen edges are bouncy walls.
+ * While music plays the sun beats gently like a heart and the planets' highlights brighten on each beat.
  */
 @Composable
 fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
@@ -470,6 +471,7 @@ fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
     val drag = remember { DragState() }
     val frame = remember { mutableLongStateOf(0L) }
     val stars = remember { List(160) { makeStar() } }
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(resetGeneration) {
         system.reset()
@@ -484,6 +486,7 @@ fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0.0 else (now - last) / 1_000_000_000.0
                 last = now
+                pulse.update(now)
                 if (dt > 0.0 && dt < 0.1) {
                     system.step(dt * TIME_SCALE, drag.body, drag.attracting, drag.fingerX, drag.fingerY)
                     system.confine(camera, drag.body)
@@ -504,6 +507,7 @@ fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         camera.update(size.width, size.height)
         val t = frame.longValue / 1_000_000_000f
+        val beat = pulse.beat
 
         drawRect(Color(0xFF02040A))
         drawRect(
@@ -537,25 +541,28 @@ fun SolarSystemWallpaper(modifier: Modifier = Modifier) {
             val radius = body.visualRadius * factor * camera.minDim
 
             if (isSun) {
-                drawSun(sx, sy, radius)
+                drawSun(sx, sy, radius, beat)
             } else {
                 if (body.ring) drawRing(sx, sy, radius, front = false)
-                drawPlanet(sx, sy, radius, body.color, sunProj[0], sunProj[1])
+                drawPlanet(sx, sy, radius, body.color, sunProj[0], sunProj[1], beat)
                 if (body.ring) drawRing(sx, sy, radius, front = true)
             }
         }
     }
 }
 
-private fun DrawScope.drawSun(sx: Float, sy: Float, radius: Float) {
+/** [beat] (0..1, 0 without music) swells the sun ~4% and its glow and glint a little more. */
+private fun DrawScope.drawSun(sx: Float, sy: Float, baseRadius: Float, beat: Float) {
     val c = Offset(sx, sy)
+    val radius = baseRadius * (1f + 0.04f * beat)
+    val glow = radius * (6f + 0.5f * beat)
     drawCircle(
         brush = Brush.radialGradient(
             colors = SunGlowColors,
             center = c,
-            radius = radius * 6f,
+            radius = glow,
         ),
-        radius = radius * 6f,
+        radius = glow,
         center = c,
     )
     drawCircle(
@@ -567,14 +574,14 @@ private fun DrawScope.drawSun(sx: Float, sy: Float, radius: Float) {
         radius = radius,
         center = c,
     )
-    drawCircle(Color(0xFFFFFFFF).copy(alpha = 0.85f), radius = radius * 0.34f, center = c)
+    drawCircle(Color(0xFFFFFFFF).copy(alpha = 0.85f + 0.1f * beat), radius = radius * 0.34f, center = c)
     // Anamorphic glint.
     drawOval(
         brush = Brush.horizontalGradient(
             colors = GlintColors,
         ),
-        topLeft = Offset(sx - radius * 3.2f, sy - radius * 0.06f),
-        size = Size(radius * 6.4f, radius * 0.12f),
+        topLeft = Offset(sx - radius * (3.2f + 0.4f * beat), sy - radius * 0.06f),
+        size = Size(radius * (6.4f + 0.8f * beat), radius * 0.12f),
     )
 }
 
@@ -601,6 +608,7 @@ private fun DrawScope.drawPlanet(
     color: Color,
     sunX: Float,
     sunY: Float,
+    beat: Float,
 ) {
     if (radius <= 0.3f) return
     val dx = sunX - sx
@@ -642,14 +650,15 @@ private fun DrawScope.drawPlanet(
         center = c,
         style = Stroke(width = max(0.6f, radius * 0.12f)),
     )
-    // Soft specular.
+    // Soft specular; widens a touch on the music beat so the glint catches the sun's pulse.
+    val spec = radius * (0.45f + 0.07f * beat)
     drawCircle(
         brush = Brush.radialGradient(
             colors = SpecularColors,
             center = lit,
-            radius = radius * 0.45f,
+            radius = spec,
         ),
-        radius = radius * 0.45f,
+        radius = spec,
         center = lit,
     )
 }

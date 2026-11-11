@@ -26,19 +26,23 @@ import kotlin.random.Random
  * Light strings: a fan of luminous strings stretched across the screen like an instrument.
  * Dragging across a string catches it, pulls it along with the finger and lets it snap free,
  * so it rings out as a real vibrating string; a quick strum plucks every string it crosses and
- * a tap plucks the nearest one. Ringing strings glow brighter and settle back to rest.
+ * a tap plucks the nearest one. Ringing strings glow brighter and settle back to rest. While
+ * music plays, each [MusicPulse] beat softly plucks a string, rotating through the fan.
  */
 @Composable
 fun StringsWallpaper(modifier: Modifier = Modifier) {
     val strings = remember { List(STRING_COUNT) { LightString(it) } }
     val layout = remember { StringsLayout() }
     val timeNanos = remember { mutableLongStateOf(0L) }
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(Unit) {
         var start = 0L
         var wasPressed = false
         var lastX = 0f
         var lastY = 0f
+        var beatHigh = false
+        var beatCount = 0
         while (isActive) {
             withFrameNanos { now ->
                 if (start == 0L) start = now
@@ -60,6 +64,20 @@ fun StringsWallpaper(modifier: Modifier = Modifier) {
                     lastX = x
                     lastY = y
                     wasPressed = pressed
+                }
+
+                pulse.update(now)
+                val groove = pulse.groove
+                if (groove > 0f) {
+                    // Pluck once on each beat's rising edge.
+                    val high = pulse.beat > BEAT_THRESHOLD * groove
+                    if (high && !beatHigh && layout.width > 0f) {
+                        musicPluck(strings, layout, beatCount, groove)
+                        beatCount++
+                    }
+                    beatHigh = high
+                } else {
+                    beatHigh = false
                 }
 
                 for (s in strings) s.step()
@@ -85,6 +103,8 @@ private const val U_SPAN = 1.12f
 private const val MAX_PULL = 0.8f
 private const val TAP_RADIUS = 0.6f
 private const val TAP_PULL = 0.45f
+private const val BEAT_THRESHOLD = 0.3f
+private const val MUSIC_PULL = 0.12f
 
 /** Screen geometry of the fan: where each string rests and how far apart neighbours are. */
 private class StringsLayout {
@@ -176,6 +196,16 @@ private class LightString(val index: Int) {
         disp.copyInto(prev)
     }
 
+    /** Adds a soft pluck of [amount] pixels at [node] on top of whatever the string is doing. */
+    fun nudge(node: Float, amount: Float) {
+        val k = node.coerceIn(1f, (NODES - 2).toFloat())
+        for (j in 1 until NODES - 1) {
+            val d = if (j <= k) amount * j / k else amount * (NODES - 1 - j) / (NODES - 1 - k)
+            disp[j] += d
+            prev[j] += d
+        }
+    }
+
     fun grab(layout: StringsLayout, x: Float) {
         grabbed = true
         grabNode = layout.nodeAt(x)
@@ -203,6 +233,22 @@ private fun tap(strings: List<LightString>, layout: StringsLayout, x: Float, y: 
     if (abs(y - layout.restY(nearest.index, u)) > spacing * TAP_RADIUS) return
     val dir = if (Random.nextBoolean()) 1f else -1f
     nearest.pull(layout.nodeAt(x), dir * spacing * TAP_PULL)
+}
+
+/**
+ * Music groove: each beat gently plucks one string, stepping through the fan in a scattered order
+ * at a slowly wandering point; every fourth beat a second string joins in.
+ */
+private fun musicPluck(strings: List<LightString>, layout: StringsLayout, beat: Int, groove: Float) {
+    val u = 0.25f + 0.5f * ((beat * 0.382f) % 1f)
+    val node = layout.nodeAt(u * layout.width)
+    val amount = layout.spacing(u) * MUSIC_PULL * groove * (if (beat % 2 == 0) 1f else -1f)
+    val first = strings[(beat * 5) % STRING_COUNT]
+    if (!first.grabbed) first.nudge(node, amount)
+    if (beat % 4 == 0) {
+        val second = strings[(beat * 5 + 8) % STRING_COUNT]
+        if (!second.grabbed) second.nudge(node, -0.7f * amount)
+    }
 }
 
 /** Catches every string the finger crossed since the last frame. */

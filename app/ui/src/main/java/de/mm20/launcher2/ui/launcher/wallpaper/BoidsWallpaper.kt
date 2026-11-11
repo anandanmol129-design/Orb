@@ -55,6 +55,13 @@ private const val FLAP_PER_SPEED = 0.05f
 private const val FLAP_DEPTH = 0.16f
 private const val TWO_PI = (2.0 * Math.PI).toFloat()
 
+// Music: while it plays, every wingbeat locks to the 120 BPM groove (wings fully spread on each
+// beat) and the flock flies MUSIC_SPEED_LIFT faster; both blend back out as the groove fades.
+private const val BEAT_SECONDS = 0.5f
+private const val BEAT_PEAK_SECONDS = 0.055f
+private const val FLAP_LOCK = 0.12f
+private const val MUSIC_SPEED_LIFT = 0.06f
+
 private const val POINTER_RADIUS = 70f // dp
 private const val POINTER_FORCE = 5f // dp per frame
 
@@ -121,6 +128,7 @@ private class BoidsViewport {
  * the faster they fly; they are tinted light against the dark upper sky and dark against the
  * bright horizon so they stay readable everywhere. Birds breed while in flocks and die in
  * isolation, keeping the flock between MIN_BOIDS and MAX_BOIDS.
+ * While music plays the wingbeats lock to the beat and the flock flies a touch faster.
  */
 @Composable
 fun BoidsWallpaper(modifier: Modifier = Modifier) {
@@ -129,10 +137,13 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
     val viewport = remember { BoidsViewport() }
     val pointer = remember { BoidsPointerState() }
     val frame = remember { mutableLongStateOf(0L) }
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(Unit) {
         var initialized = false
         var lastFrameNanos = 0L
+        var lastBeat = 0f
+        var sinceBeat = 0f
         while (isActive) {
             withFrameNanos { now ->
                 if (viewport.w > 0f) {
@@ -152,7 +163,13 @@ fun BoidsWallpaper(modifier: Modifier = Modifier) {
                     } else {
                         ((now - lastFrameNanos) / 1_000_000_000.0).toFloat()
                     }
-                    stepBoids(birds, viewport, pointer)
+                    pulse.update(now)
+                    // Re-sync the beat clock on each thump's rising edge (the pulse rests at 0
+                    // for ~200 ms between thumps).
+                    if (pulse.beat > 0f && lastBeat == 0f) sinceBeat = 0f else sinceBeat += dt
+                    lastBeat = pulse.beat
+                    val flapTarget = TWO_PI * (sinceBeat - BEAT_PEAK_SECONDS) / BEAT_SECONDS
+                    stepBoids(birds, viewport, pointer, pulse.groove, flapTarget, TWO_PI * dt / BEAT_SECONDS)
                     updatePopulation(birds, dt)
                 }
                 lastFrameNanos = now
@@ -300,7 +317,19 @@ private val SunHazeColors = listOf(
 )
 private val VignetteColors = listOf(Color.Transparent, Color(0xFF0B0E1A).copy(alpha = 0.45f))
 
-private fun stepBoids(birds: List<Bird>, viewport: BoidsViewport, pointer: BoidsPointerState) {
+/**
+ * [groove] (0..1) blends each wingbeat from free flapping toward [flapTarget], the beat-locked flap
+ * phase, which advances [beatAdvance] radians this frame, and lifts the flight speed slightly.
+ */
+private fun stepBoids(
+    birds: List<Bird>,
+    viewport: BoidsViewport,
+    pointer: BoidsPointerState,
+    groove: Float,
+    flapTarget: Float,
+    beatAdvance: Float,
+) {
+    val move = 1f + MUSIC_SPEED_LIFT * groove
     for (boid in birds) {
         flyTowardsCenter(boid, birds)
         avoidOthers(boid, birds)
@@ -309,12 +338,18 @@ private fun stepBoids(birds: List<Bird>, viewport: BoidsViewport, pointer: Boids
         limitSpeed(boid)
         keepWithinBounds(boid, viewport)
 
-        boid.x += boid.dx
-        boid.y += boid.dy
+        boid.x += boid.dx * move
+        boid.y += boid.dy * move
 
         val speed = sqrt(boid.dx * boid.dx + boid.dy * boid.dy)
-        boid.flapPhase += FLAP_BASE + speed * FLAP_PER_SPEED
+        val free = FLAP_BASE + speed * FLAP_PER_SPEED
+        if (groove > 0f) {
+            boid.flapPhase += free + (beatAdvance - free) * groove + flapLock(boid.flapPhase, flapTarget) * groove
+        } else {
+            boid.flapPhase += free
+        }
         if (boid.flapPhase > TWO_PI) boid.flapPhase -= TWO_PI
+        if (boid.flapPhase < 0f) boid.flapPhase += TWO_PI
     }
 }
 
@@ -374,6 +409,15 @@ private fun updatePopulation(birds: MutableList<Bird>, dt: Float) {
         i++
     }
 }
+
+/** A small step pulling [phase] toward [target] the short way round the circle. */
+private fun flapLock(phase: Float, target: Float): Float {
+    var d = (target - phase) % TWO_PI
+    if (d > PI_F) d -= TWO_PI else if (d < -PI_F) d += TWO_PI
+    return d * FLAP_LOCK
+}
+
+private const val PI_F = Math.PI.toFloat()
 
 private fun repelFromPointer(boid: Bird, pointer: BoidsPointerState) {
     if (!pointer.active || !pointer.x.isFinite() || !pointer.y.isFinite()) return

@@ -50,6 +50,8 @@ import kotlin.math.sin
  * are positioned by the canvas transform, the rest are rebuilt only when their geometry moves),
  * and animation time is measured from the wallpaper's start and wrapped to the animation's exact
  * periods so float precision never degrades however long the launcher has been running.
+ *
+ * While music plays, the beam, fan, bloom and contact glow brighten a few percent on each beat.
  */
 @Composable
 fun PrismWallpaper(modifier: Modifier = Modifier) {
@@ -57,6 +59,7 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
     val elapsedNanos = remember { mutableLongStateOf(0L) }
     val fan = remember { FanMesh() }
     val cache = remember { PrismCache() }
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(Unit) {
         var start = 0L
@@ -67,6 +70,7 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_DT)
                 last = now
                 aim.update(dt)
+                pulse.update(now)
                 elapsedNanos.longValue = now - start
             }
         }
@@ -80,6 +84,8 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
         val tFan = ((elapsed % FAN_PERIOD_NANOS) / 1e9).toFloat()
         val tDots = (DOT_TIME_BASE + (elapsed / 1e9) % DOT_PERIOD).toFloat()
         drawRect(Color.Black)
+        // 0 when no music plays, so every beat factor below is exactly 1.
+        val beat = pulse.beat
 
         val minDim = minOf(w, h)
         val unit = minDim / 7.5f
@@ -115,26 +121,29 @@ fun PrismWallpaper(modifier: Modifier = Modifier) {
         // the prism drawn on top of it. Colours are evaluated once here and every copy below
         // reuses them.
         fan.ensure(w, h)
-        fan.updateColors(tFan)
+        fan.updateColors(tFan, 1f + FAN_BEAT_GAIN * beat)
         drawFanReflections(fan, center, aim.fanAngle, w, h)
 
         // Wide bloom wash along the fan axis.
         val axis = Offset(cos(aim.fanAngle), -sin(aim.fanAngle))
-        drawGlow(cache.wash, center + axis * (diag * 0.26f), diag * 0.34f, blendMode = BlendMode.Plus)
+        drawGlow(cache.wash, center + axis * (diag * 0.26f), diag * 0.34f * (1f + 0.05f * beat), blendMode = BlendMode.Plus)
 
         // The beam.
-        drawBeam(cache, source, entry, unit, aim.strength)
+        drawBeam(cache, source, entry, unit, aim.strength, beat)
 
         // The prism.
         drawPrism(cache, center, vTop, vBl, vBr, unit, entry, aim.fanAngle)
 
         // Contact point: glows, vertical flare spike and drifting bokeh dots.
-        drawContact(cache, entry, unit, minDim, tDots, aim.strength)
+        drawContact(cache, entry, unit, minDim, tDots, aim.strength, beat)
     }
 }
 
 private val DEG = (Math.PI / 180.0).toFloat()
 private const val BEND_DEG = 14.5f
+
+/** Linear fan brightness added at the peak of a music beat (about +5% after gamma). */
+private const val FAN_BEAT_GAIN = 0.12f
 
 /** Longest frame step fed to the smoothing, so one hitch cannot jolt the aim. */
 private const val MAX_DT = 0.05f
@@ -411,10 +420,11 @@ private class FanMesh {
 
     /**
      * Rebuild the flowing vertex colours for flow time [t]; once per frame, shared by copies.
+     * [gain] scales the linear brightness (1 normally; slightly above on a music beat).
      * This is the reference formula (spectral base / iridescence blob field, soft-edged and
      * gamma-encoded) with its time-independent parts read from the per-vertex tables.
      */
-    fun updateColors(t: Float) {
+    fun updateColors(t: Float, gain: Float) {
         val tt = t / 10f
         for (v in 0 until count) {
             if (!lit[v]) {
@@ -446,11 +456,12 @@ private class FanMesh {
             val r = (baseR[v] / ir0).coerceAtLeast(0f)
             val g = (baseG[v] / ir1).coerceAtLeast(0f)
             val bl = (baseB[v] / ir2).coerceAtLeast(0f)
-            val edge = Spectrum.smoothstep(0.05f, 1f, r + g + bl)
-            if (edge <= 0f) {
+            val soft = Spectrum.smoothstep(0.05f, 1f, r + g + bl)
+            if (soft <= 0f) {
                 argb[v] = 0
                 continue
             }
+            val edge = soft * gain
             argb[v] = (0xFF shl 24) or
                 (Spectrum.srgbByte(r * edge) shl 16) or
                 (Spectrum.srgbByte(g * edge) shl 8) or
@@ -741,7 +752,14 @@ private class PrismCache {
 
 /* -------------------------------- scene drawing -------------------------------- */
 
-private fun DrawScope.drawBeam(cache: PrismCache, source: Offset, entry: Offset, unit: Float, strength: Float) {
+private fun DrawScope.drawBeam(
+    cache: PrismCache,
+    source: Offset,
+    entry: Offset,
+    unit: Float,
+    strength: Float,
+    beat: Float,
+) {
     if ((entry - source).getDistance() < 1f) return
     val dir = normalize(entry - source)
     val perp = Offset(-dir.y, dir.x)
@@ -753,7 +771,7 @@ private fun DrawScope.drawBeam(cache: PrismCache, source: Offset, entry: Offset,
         brush = cache.wideBrush,
         start = source,
         end = entry,
-        strokeWidth = unit * 0.06f,
+        strokeWidth = unit * 0.06f * (1f + 0.12f * beat),
         cap = StrokeCap.Round,
         blendMode = BlendMode.Plus,
     )
@@ -761,7 +779,7 @@ private fun DrawScope.drawBeam(cache: PrismCache, source: Offset, entry: Offset,
         brush = cache.coreBrush,
         start = source,
         end = entry,
-        strokeWidth = unit * 0.012f,
+        strokeWidth = unit * 0.012f * (1f + 0.08f * beat),
         cap = StrokeCap.Round,
         blendMode = BlendMode.Plus,
     )
@@ -843,8 +861,9 @@ private fun DrawScope.drawContact(
     minDim: Float,
     t: Float,
     strength: Float,
+    beat: Float,
 ) {
-    val glowAlpha = (strength / MAX_STRENGTH).coerceIn(0f, 1f)
+    val glowAlpha = (strength / MAX_STRENGTH * (1f + 0.12f * beat)).coerceIn(0f, 1f)
 
     // Core and glows where the beam lands.
     drawGlow(cache.contactHalo, entry, unit * 0.625f, glowAlpha, BlendMode.Plus)

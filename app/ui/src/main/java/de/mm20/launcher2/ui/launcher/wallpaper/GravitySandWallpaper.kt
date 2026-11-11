@@ -45,12 +45,14 @@ import kotlin.math.sqrt
  * through the sand and shoves grains aside; holding it still pours a thin stream of new sand.
  * Each grain takes its colour from a slowly cycling warm palette when it is created, so the
  * pile builds up coloured strata. When everything has settled a sparse drizzle keeps it alive.
+ * While music plays, the warm haze swells gently on each beat and a few surface grains hop.
  */
 @Composable
 fun GravitySandWallpaper(modifier: Modifier = Modifier) {
     val sim = remember { SandSim() }
     val gravity = remember { SandGravity() }
     val timeNanos = remember { mutableLongStateOf(0L) }
+    val pulse = remember { MusicPulse() }
     val context = LocalContext.current
     val resetGeneration = rememberResetGeneration()
 
@@ -106,12 +108,18 @@ fun GravitySandWallpaper(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         var last = 0L
+        var lastBeat = 0f
         while (isActive) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
                 last = now
+                pulse.update(now)
+                val beat = pulse.beat
+                // Grains hop once per beat, as the thump rises through half strength.
+                val hops = if (beat >= 0.5f && lastBeat < 0.5f) (HOP_GRAINS * pulse.groove).toInt() else 0
+                lastBeat = beat
                 if (sim.ready) {
-                    sim.frame(dt, gravity.resolve())
+                    sim.frame(dt, gravity.resolve(), hops)
                 }
                 timeNanos.longValue = now
             }
@@ -131,7 +139,7 @@ fun GravitySandWallpaper(modifier: Modifier = Modifier) {
             srcSize = IntSize(sim.glowW, sim.glowH),
             dstOffset = IntOffset.Zero,
             dstSize = IntSize(sim.glowDstW, sim.glowDstH),
-            alpha = GLOW_ALPHA,
+            alpha = GLOW_ALPHA * (1f + GLOW_BEAT_GAIN * pulse.beat),
             blendMode = BlendMode.Plus,
             filterQuality = FilterQuality.Low,
         )
@@ -166,6 +174,10 @@ private const val LUT_PER_STOP = 64
 private const val GLOW_BLOCK = 4
 private const val GLOW_GAIN = 1.1f
 private const val GLOW_ALPHA = 0.45f
+
+/** Music: extra haze at the peak of a beat, and how many surface grains hop on each beat. */
+private const val GLOW_BEAT_GAIN = 0.18f
+private const val HOP_GRAINS = 28
 
 // The 8 grid directions in angle order with y pointing down: 0 = right, 2 = down, 4 = left, 6 = up.
 private val DIR_X = intArrayOf(1, 1, 0, -1, -1, -1, 0, 1)
@@ -315,6 +327,8 @@ private class SandSim {
     private var drizzleAcc = 0f
     private var pourAcc = 0f
     private var quiet = 0f
+    // Moves still expected from hopped grains landing again; they don't count as activity.
+    private var hopDebt = 0
     private var drizzling = false
     private var wasPressed = false
     private var anchorX = 0f
@@ -421,7 +435,8 @@ private class SandSim {
         quiet = 0f
     }
 
-    fun frame(dt: Float, newDir: Int) {
+    /** Advances one frame; [hops] surface grains (0 without music) hop against gravity after the steps. */
+    fun frame(dt: Float, newDir: Int, hops: Int) {
         time += dt
         palettePhase += dt / SECONDS_PER_STOP
         if (newDir != dir) {
@@ -481,6 +496,13 @@ private class SandSim {
         stepAcc = min(stepAcc - steps, 1f)
         var moves = 0
         for (s in 0 until steps) moves += step()
+        if (hopDebt > 0) {
+            val own = min(moves, hopDebt)
+            hopDebt -= own
+            moves -= own
+            if (steps > 0 && own == 0) hopDebt = 0
+        }
+        if (hops > 0) hop(hops)
         if (steps > 0) {
             if (moves == 0 && !pressed && streamLeft <= 0f) {
                 quiet += dt
@@ -543,6 +565,51 @@ private class SandSim {
             y += ys
         }
         return moves
+    }
+
+    /**
+     * Lifts up to [n] grains on the exposed surface by up to two cells against gravity; the next
+     * steps drop them back. Each pick walks one line from a random cell to the surface.
+     */
+    private fun hop(n: Int) {
+        val dx = DIR_X[dir]
+        val dy = DIR_Y[dir]
+        val maxWalk = max(gw, gh)
+        for (k in 0 until n) {
+            var x = rng.below(gw)
+            var y = rng.below(gh)
+            var walk = 0
+            if (cells[y * gw + x] != 0) {
+                // Inside the pile: climb against gravity while the next cell up holds a grain.
+                while (walk < maxWalk) {
+                    val ux = x - dx
+                    val uy = y - dy
+                    if (ux < 0 || uy < 0 || ux >= gw || uy >= gh || cells[uy * gw + ux] == 0) break
+                    x = ux
+                    y = uy
+                    walk++
+                }
+            } else {
+                // In the air: fall with gravity until landing on a grain.
+                while (walk < maxWalk) {
+                    x += dx
+                    y += dy
+                    walk++
+                    if (x < 0 || y < 0 || x >= gw || y >= gh) break
+                    if (cells[y * gw + x] != 0) break
+                }
+                if (x < 0 || y < 0 || x >= gw || y >= gh || cells[y * gw + x] == 0) continue
+            }
+            val i = y * gw + x
+            var target = freeCell(x - dx, y - dy)
+            if (target < 0) continue
+            val higher = freeCell(x - 2 * dx, y - 2 * dy)
+            if (higher >= 0) target = higher
+            cells[target] = cells[i]
+            cells[i] = 0
+            stamp[target] = stepId
+            hopDebt += 3
+        }
     }
 
     private fun freeCell(x: Int, y: Int): Int {

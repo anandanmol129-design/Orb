@@ -34,12 +34,15 @@ import kotlin.random.Random
  * whose amount grows with speed; holding still blooms a soft, slowly curling puff. Each stroke
  * takes the next colour of a slowly cycling palette. Untouched, a few wandering emitters breathe
  * gentle jets of smoke so the water is never still.
+ *
+ * While music plays, the emitters give a small extra push and puff of ink on each beat, so the smoke breathes in time.
  */
 @Composable
 fun FluidInkWallpaper(modifier: Modifier = Modifier) {
     val host = remember { InkHost() }
     val frame = remember { mutableLongStateOf(0L) }
     val generation = rememberResetGeneration()
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(generation) {
         host.pendingSeed = true
@@ -56,7 +59,8 @@ fun FluidInkWallpaper(modifier: Modifier = Modifier) {
                 }
                 val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_DT)
                 last = now
-                host.step((now - start) / 1_000_000_000f, dt)
+                pulse.update(now)
+                host.step((now - start) / 1_000_000_000f, dt, pulse.beat)
                 frame.longValue = now
             }
         }
@@ -104,6 +108,8 @@ private const val EMITTERS = 3
 private const val AMBIENT_RADIUS = 3f
 private const val AMBIENT_ACCEL = 14f // cells per second²
 private const val AMBIENT_DYE = 1.1f // per second
+private const val BEAT_PUSH = 1.2f // extra emitter force at the peak of a music beat
+private const val BEAT_DYE = 0.6f // extra emitter ink at the peak of a music beat
 
 private const val HUE_DRIFT = 0.012f // palette cycles per second
 private const val STROKE_HUE_STEP = 0.19f
@@ -158,7 +164,7 @@ private class InkHost {
     private val envFreq = floatArrayOf(0.35f, 0.27f, 0.22f)
     private val envPhase = FloatArray(EMITTERS) { it * 2.1f }
 
-    fun step(t: Float, dt: Float) {
+    fun step(t: Float, dt: Float, beat: Float) {
         val w = viewWidth
         val h = viewHeight
         if (w < 1f || h < 1f || dt <= 0f) return
@@ -171,7 +177,7 @@ private class InkHost {
         val pressed = WallpaperPointer.pressed
         if (pressed) touch(s, t, dt, w / s.nx, h / s.ny)
         wasPressed = pressed
-        ambient(s, t, dt, if (pressed) 0.5f else 1f)
+        ambient(s, t, dt, if (pressed) 0.5f else 1f, beat)
         s.step(dt)
         s.render()
     }
@@ -262,14 +268,17 @@ private class InkHost {
         lastGy = gy
     }
 
-    private fun ambient(s: InkSim, t: Float, dt: Float, gain: Float) {
+    private fun ambient(s: InkSim, t: Float, dt: Float, gain: Float, beat: Float) {
+        // Music: both factors are exactly 1 when nothing plays.
+        val push = 1f + BEAT_PUSH * beat
+        val ink = 1f + BEAT_DYE * beat
         for (e in 0 until EMITTERS) {
             val pulse = max(0f, sin(t * envFreq[e] + envPhase[e]))
             val env = (0.22f + 0.78f * pulse * pulse) * gain
             val ex = 0.5f + 0.32f * sin(t * ax[e] + phx[e]) + 0.06f * sin(t * ax[e] * 2.7f + phy[e])
             val ey = 0.5f + 0.36f * sin(t * ay[e] + phy[e]) + 0.05f * sin(t * ay[e] * 3.1f + phx[e])
             val angle = t * spin[e] + phx[e] + 1.4f * sin(t * 0.07f + e)
-            val accel = AMBIENT_ACCEL * env * dt
+            val accel = AMBIENT_ACCEL * env * dt * push
             palette(t * HUE_DRIFT + e / EMITTERS.toFloat() + 0.08f * sin(t * 0.05f + e), rgb)
             s.splat(
                 cx = 1f + ex * (s.nx - 1),
@@ -279,7 +288,7 @@ private class InkHost {
                 dvy = sin(angle) * accel,
                 swirl = 0f,
                 rgb = rgb,
-                dye = AMBIENT_DYE * env * dt,
+                dye = AMBIENT_DYE * env * dt * ink,
             )
         }
     }

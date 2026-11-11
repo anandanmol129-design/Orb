@@ -19,6 +19,7 @@ fun LauncherWallpaper(
     modifier: Modifier = Modifier,
 ) {
     val active = if (type == WallpaperType.Random) rememberRandomWallpaperType() else type
+    if (active != WallpaperType.System) PollMusicPlaying()
     when (active) {
         WallpaperType.System, WallpaperType.Random -> Unit
         WallpaperType.Water -> WaterWallpaper(modifier)

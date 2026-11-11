@@ -27,7 +27,8 @@ import kotlin.random.Random
 /**
  * Still water: a dark glassy surface at rest. Touching drops stones — concentric waves spread
  * from the contact point across a real wave field and shove the motes drifting in the water
- * around. A held finger drags a wake; waves die out and the surface settles flat again.
+ * around. A held finger drags a wake; waves die out and the surface settles flat again. While
+ * music plays, every other [MusicPulse] beat drops a small soft ripple at a slowly wandering spot.
  */
 @Composable
 fun WaterWallpaper(modifier: Modifier = Modifier) {
@@ -35,12 +36,16 @@ fun WaterWallpaper(modifier: Modifier = Modifier) {
     val motes = remember { List(MOTE_COUNT) { Mote() } }
     val mesh = remember { WaterMesh() }
     val timeNanos = remember { mutableStateOf(0L) }
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(Unit) {
         var last = 0L
         var wasPressed = false
         var wakeX = Float.NaN
         var wakeY = Float.NaN
+        var beatHigh = false
+        var beatCount = 0
+        var musicTime = 0f
         while (isActive) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
@@ -67,6 +72,25 @@ fun WaterWallpaper(modifier: Modifier = Modifier) {
                     }
                 }
                 wasPressed = WallpaperPointer.pressed
+
+                pulse.update(now)
+                val groove = pulse.groove
+                if (groove > 0f) {
+                    musicTime += dt
+                    val high = pulse.beat > BEAT_THRESHOLD * groove
+                    if (high && !beatHigh) {
+                        if (beatCount % 2 == 0) {
+                            // Drift slowly over the middle of the screen on a Lissajous path.
+                            val gx = (GW - 1) * (0.5f + 0.28f * sin(musicTime * 0.13f))
+                            val gy = (GH - 1) * (0.5f + 0.22f * sin(musicTime * 0.083f + 1.3f))
+                            field.disturb(gx, gy, MUSIC_RADIUS, MUSIC_AMP * groove)
+                        }
+                        beatCount++
+                    }
+                    beatHigh = high
+                } else {
+                    beatHigh = false
+                }
 
                 field.step()
                 field.slopes()
@@ -95,6 +119,9 @@ private const val WAKE_RADIUS = 1.6f
 private const val WAKE_AMP = 0.3f
 private const val WAKE_STEP = 0.8f
 private const val MOTE_COUNT = 42
+private const val BEAT_THRESHOLD = 0.3f
+private const val MUSIC_RADIUS = 2.2f
+private const val MUSIC_AMP = 0.14f
 
 /** Classic damped wave field on a coarse grid; flat at rest, rings when disturbed. */
 private class RippleField {

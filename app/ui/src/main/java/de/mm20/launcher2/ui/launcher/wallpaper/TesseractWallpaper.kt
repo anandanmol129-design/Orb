@@ -37,11 +37,13 @@ import android.graphics.Color as AndroidColor
  *
  * Dragging spins the 4D rotation (horizontal drives XW, vertical drives YW); on release it coasts
  * and eases back to the ambient speeds. A quick tap gives a brief pulse of brightness. Every time
- * the launcher resumes the rotation phase is randomised.
+ * the launcher resumes the rotation phase is randomised. While music plays the edges and vertices
+ * brighten and the figure swells slightly on each [MusicPulse] beat, and it turns a touch faster.
  */
 @Composable
 fun TesseractWallpaper(modifier: Modifier = Modifier) {
     val tesseract = remember { Tesseract() }
+    val pulse = remember { MusicPulse() }
     val frame = remember { mutableLongStateOf(0L) }
     val generation = rememberResetGeneration()
 
@@ -53,6 +55,8 @@ fun TesseractWallpaper(modifier: Modifier = Modifier) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 1f / 60f else ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_DT)
                 last = now
+                pulse.update(now)
+                tesseract.music(pulse)
                 tesseract.step(dt, WallpaperPointer.x, WallpaperPointer.y, WallpaperPointer.pressed)
                 frame.longValue = now
             }
@@ -99,6 +103,11 @@ private const val TAP_TIME = 0.25f
 private const val TAP_SLOP = 0.03f
 private const val PULSE_TAU = 0.45f
 private const val PULSE_GAIN = 0.8f
+
+// Music: brightness and size lift on each beat, ambient spin boost while music plays.
+private const val MUSIC_BRIGHT = 0.07f
+private const val MUSIC_SWELL = 0.025f
+private const val MUSIC_SPIN = 0.2f
 
 // Ghost pose lags the real one by roughly this time constant.
 private const val GHOST_LAG = 0.18f
@@ -176,6 +185,8 @@ private class Tesseract {
     private var lastY = 0f
     private var pressAge = 0f
     private var travel = 0f
+    private var beat = 0f
+    private var groove = 0f
 
     init {
         randomizePhase()
@@ -211,11 +222,18 @@ private class Tesseract {
         ghostValid = false
     }
 
+    /** Takes this frame's music groove; both stay 0 when nothing plays. */
+    fun music(pulse: MusicPulse) {
+        groove = pulse.groove
+        beat = pulse.beat
+    }
+
     fun step(dt: Float, px: Float, py: Float, pressed: Boolean) {
         time += dt
         if (width > 0f) pointer(dt, px, py, pressed)
+        val ambient = if (groove > 0f) 1f + MUSIC_SPIN * groove else 1f
         for (k in angle.indices) {
-            var a = angle[k] + AMBIENT_SPEED[k] * dt
+            var a = angle[k] + AMBIENT_SPEED[k] * ambient * dt
             if (k == XW) a += spinXW * dt
             if (k == YW) a += spinYW * dt
             angle[k] = a % TWO_PI
@@ -264,6 +282,7 @@ private class Tesseract {
         val cXY = cos(angle[XY]); val sXY = sin(angle[XY])
         val cXZ = cos(angle[XZ]); val sXZ = sin(angle[XZ])
         val g = if (ghostValid) 1f - exp(-dt / GHOST_LAG) else 1f
+        val sc = if (beat > 0f) scale * (1f + MUSIC_SWELL * beat) else scale
         for (i in 0 until 16) {
             var x = base[i * 4]
             var y = base[i * 4 + 1]
@@ -279,7 +298,7 @@ private class Tesseract {
             val x3 = x * s4
             val y3 = y * s4
             val z3 = z * s4
-            val s3 = DIST_Z / max(DIST_Z - z3, 0.5f) * scale
+            val s3 = DIST_Z / max(DIST_Z - z3, 0.5f) * sc
             val px = cx + x3 * s3
             val py = cy + y3 * s3
             sx[i] = px
@@ -294,7 +313,7 @@ private class Tesseract {
 
     private fun updateColors() {
         val drift = DRIFT_A * sin(time * TWO_PI / DRIFT_PERIOD_A) + DRIFT_B * sin(time * TWO_PI / DRIFT_PERIOD_B)
-        val bright = 1f + PULSE_GAIN * pulse
+        val bright = 1f + PULSE_GAIN * pulse + MUSIC_BRIGHT * beat
         for (b in 0 until BUCKETS) {
             val t = b / (BUCKETS - 1f)
             hsv[0] = ((HUE_FAR + (HUE_NEAR - HUE_FAR) * t + drift) % 360f + 360f) % 360f

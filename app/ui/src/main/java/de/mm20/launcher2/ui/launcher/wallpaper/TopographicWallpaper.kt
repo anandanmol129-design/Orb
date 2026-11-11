@@ -35,12 +35,15 @@ import kotlin.random.Random
  * raises a hill under the finger that keeps growing while held, so rings of contours bloom
  * outward and glow; dragging pulls it along and leaves a ridge that relaxes, and on release the
  * hill subsides over a couple of seconds. The terrain is reseeded whenever the launcher resumes.
+ *
+ * While music plays, the terrain gently swells on each beat so the contours ripple outward and brighten a little.
  */
 @Composable
 fun TopographicWallpaper(modifier: Modifier = Modifier) {
     val topo = remember { TopoMap() }
     val frame = remember { mutableLongStateOf(0L) }
     val generation = rememberResetGeneration()
+    val pulse = remember { MusicPulse() }
 
     LaunchedEffect(generation) { topo.reseed() }
 
@@ -50,8 +53,9 @@ fun TopographicWallpaper(modifier: Modifier = Modifier) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_DT)
                 last = now
+                pulse.update(now)
                 if (topo.ready) {
-                    topo.step(dt, WallpaperPointer.x, WallpaperPointer.y, WallpaperPointer.pressed)
+                    topo.step(dt, WallpaperPointer.x, WallpaperPointer.y, WallpaperPointer.pressed, pulse.beat)
                 }
                 frame.longValue = now
             }
@@ -96,6 +100,10 @@ private const val FOLLOW_RATE = 16f
 private const val LINE_DP = 1.1f
 private const val INDEX_LINE_DP = 1.8f
 private const val HALO_DP = 5f
+
+// Music: terrain lift (in contour intervals) and line alpha gain at the peak of a beat.
+private const val BEAT_LIFT = 0.35f * LEVEL_STEP
+private const val BEAT_GLOW = 0.15f
 
 private val BACKDROP = Color(0xFF030608)
 
@@ -297,13 +305,13 @@ private class TopoMap {
         ready = true
     }
 
-    fun step(dt: Float, px: Float, py: Float, pressed: Boolean) {
+    fun step(dt: Float, px: Float, py: Float, pressed: Boolean, beat: Float) {
         time += dt
         stepBumps(dt, px, py, pressed)
-        computeField()
+        computeField(BEAT_LIFT * beat)
         extractContours()
         updateTint()
-        updatePaints()
+        updatePaints(1f + BEAT_GLOW * beat)
     }
 
     private fun stepBumps(dt: Float, px: Float, py: Float, pressed: Boolean) {
@@ -367,7 +375,8 @@ private class TopoMap {
         return slot
     }
 
-    private fun computeField() {
+    /** [lift] raises the whole terrain slightly (0 without music), so every contour ring widens. */
+    private fun computeField(lift: Float) {
         val z = time * MORPH_SPEED
         val sx = seedX + time * SCROLL_X
         val sy = seedY + time * SCROLL_Y
@@ -398,7 +407,7 @@ private class TopoMap {
                     b = 1f - keep
                 }
                 bf[row + i] = b
-                h[row + i] = base + (1f - base) * b
+                h[row + i] = base + (1f - base) * b + lift
             }
         }
     }
@@ -527,7 +536,8 @@ private class TopoMap {
         bmp.setPixels(pixels, 0, cols, 0, 0, cols, rows)
     }
 
-    private fun updatePaints() {
+    /** [glow] scales the line alpha (exactly 1 without music). */
+    private fun updatePaints(glow: Float) {
         val m = paletteMix()
         for (k in 0 until LEVELS) {
             val t = (k + 1f) / (LEVELS + 1f)
@@ -536,7 +546,7 @@ private class TopoMap {
             val r = rgb[0]
             val g = rgb[1]
             val b = rgb[2]
-            val calm = if (index) 0.6f else 0.26f + 0.16f * t
+            val calm = (if (index) 0.6f else 0.26f + 0.16f * t) * glow
             linePaints[k].color = argb(calm, r, g, b)
             // Warm and hot lines lift toward cream and gain alpha.
             val w1 = 0.25f
@@ -550,7 +560,7 @@ private class TopoMap {
             )
             val w2 = 0.5f
             linePaints[2 * LEVELS + k].color = argb(
-                if (index) 1f else 0.88f,
+                if (index) 1f else min(1f, 0.88f * glow),
                 mixF(r, 1f, w2), mixF(g, 0.97f, w2), mixF(b, 0.9f, w2),
             )
             haloPaints[2 * LEVELS + k].color = argb(

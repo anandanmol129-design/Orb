@@ -24,7 +24,6 @@ import kotlinx.coroutines.isActive
 import java.nio.ByteBuffer
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.sin
@@ -38,13 +37,15 @@ import kotlin.random.Random
  * It follows the voice assistant through [WallpaperVoice]: calm and dim when idle; surging in
  * height, ripple and brightness with the (smoothed) mic level while listening, with a ripple
  * running outward along the curtains on loud onsets; a sideways shimmer drifting toward violet
- * while thinking; a brief green-white bloom on success and a red/magenta flush on error. While
- * music plays the curtains swell gently at about 2 Hz. A finger locally brightens the curtains
- * and bends them toward it. Every change is cross-faded; nothing snaps.
+ * while thinking; a brief green-white bloom on success and a red/magenta flush on error. A finger
+ * locally brightens the curtains and bends them toward it. Every change is cross-faded; nothing
+ * snaps. While music plays (and the assistant is idle) the curtains lift and brighten softly on
+ * each [MusicPulse] beat.
  */
 @Composable
 fun AuroraWallpaper(modifier: Modifier = Modifier) {
     val scene = remember { AuroraScene() }
+    val pulse = remember { MusicPulse() }
     val frame = remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(Unit) {
@@ -53,7 +54,8 @@ fun AuroraWallpaper(modifier: Modifier = Modifier) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_DT)
                 last = now
-                scene.update(dt)
+                pulse.update(now)
+                scene.update(dt, pulse)
                 frame.longValue = now
             }
         }
@@ -132,7 +134,7 @@ private class AuroraScene {
 
     private var listenW = 0f
     private var thinkW = 0f
-    private var musicW = 0f
+    private var idleW = 1f
     private var level = 0f
     private var levelFast = 0f
     private var levelSlow = 0f
@@ -142,7 +144,6 @@ private class AuroraScene {
     private var errorKick = 0f
     private var error = 0f
     private var lastState = WallpaperVoice.IDLE
-    private var beatPhase = 0f
     private var sweep = 0f
     private var shimmer = 0f
     private var touchW = 0f
@@ -260,7 +261,7 @@ private class AuroraScene {
         buildRidge(nearRidge, w, h, 0.915f, 0.022f, 4.4f)
     }
 
-    fun update(dt: Float) {
+    fun update(dt: Float, music: MusicPulse) {
         clock += dt
         val state = WallpaperVoice.state
         val raw = if (state == WallpaperVoice.LISTENING) WallpaperVoice.level.coerceIn(0f, 1f) else 0f
@@ -272,8 +273,7 @@ private class AuroraScene {
 
         listenW = follow(listenW, if (state == WallpaperVoice.LISTENING) 1f else 0f, dt, 3.5f)
         thinkW = follow(thinkW, if (state == WallpaperVoice.THINKING) 1f else 0f, dt, 2.2f)
-        val music = WallpaperVoice.musicPlaying && state == WallpaperVoice.IDLE
-        musicW = follow(musicW, if (music) 1f else 0f, dt, 1.1f)
+        idleW = follow(idleW, if (state == WallpaperVoice.IDLE) 1f else 0f, dt, 3f)
 
         if (state != lastState) {
             if (state == WallpaperVoice.SUCCESS) successKick = 1f
@@ -301,10 +301,14 @@ private class AuroraScene {
             }
         }
 
-        musicE = musicW * musicW * (3f - 2f * musicW)
-        beatPhase = (beatPhase + dt * 2f * TWO_PI) % TWO_PI
-        val p = 0.5f - 0.5f * cos(beatPhase)
-        swell = musicE * p * p
+        // Music keeps time only while the assistant is idle; the listening reaction stays dominant.
+        if (music.groove > 0f) {
+            musicE = music.groove * idleW
+            swell = music.beat * idleW
+        } else {
+            musicE = 0f
+            swell = 0f
+        }
 
         sweep = (sweep + dt * 0.2f) % 1f
         sweep1 = sweep * 1.6f - 0.3f
@@ -312,12 +316,12 @@ private class AuroraScene {
         shimmer += dt * thinkW * 2.4f
 
         listenLevel = level * listenW
-        flow += dt * (1f + 0.5f * listenW + 1.4f * listenLevel + 0.35f * thinkW + 0.4f * musicE)
+        flow += dt * (1f + 0.5f * listenW + 1.4f * listenLevel + 0.35f * thinkW + 0.2f * musicE)
 
-        brightness = 0.6f + 0.25f * listenW + 0.8f * listenLevel + 0.15f * musicE + 0.25f * swell +
+        brightness = 0.6f + 0.25f * listenW + 0.8f * listenLevel + 0.03f * musicE + 0.045f * swell +
             0.15f * thinkW + 1.1f * success + 0.3f * error
-        waveAmp = 1f + 1.6f * listenLevel + 0.35f * swell
-        heightGain = 1f + 0.75f * listenLevel + 0.1f * swell + 0.08f * thinkW + 0.25f * success
+        waveAmp = 1f + 1.6f * listenLevel + 0.06f * swell
+        heightGain = 1f + 0.75f * listenLevel + 0.05f * swell + 0.08f * thinkW + 0.25f * success
 
         val pressed = WallpaperPointer.pressed
         if (pressed) {

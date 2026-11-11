@@ -42,12 +42,15 @@ import kotlin.random.Random
  * Touching turns the finger into a strong pole whose polarity alternates with each new press,
  * so successive touches flip the nearby needles. On release the finger's pole fades out over
  * about a second and the needles relax back in a visible wave.
+ *
+ * While music plays, the ambient poles swell slightly on each beat, so the needles twitch and brighten in time.
  */
 @Composable
 fun MagneticFieldWallpaper(modifier: Modifier = Modifier) {
     val field = remember { MagneticField() }
     val frame = remember { mutableLongStateOf(0L) }
     val generation = rememberResetGeneration()
+    val pulse = remember { MusicPulse() }
 
     // Moving the poles somewhere new on every unlock makes the grid swing into a fresh pattern.
     LaunchedEffect(generation) { field.reseed() }
@@ -62,7 +65,8 @@ fun MagneticFieldWallpaper(modifier: Modifier = Modifier) {
                 val pressed = WallpaperPointer.pressed
                 field.pointer(WallpaperPointer.x, WallpaperPointer.y, pressed, pressed && !wasPressed)
                 wasPressed = pressed
-                field.step(dt)
+                pulse.update(now)
+                field.step(dt, pulse.beat)
                 frame.longValue = now
             }
         }
@@ -89,6 +93,7 @@ private const val FINGER_CHARGE = 3.5f
 private const val FINGER_SOFT = 0.04f
 private const val FINGER_ATTACK = 0.08f
 private const val FINGER_RELEASE = 0.33f
+private const val BEAT_CHARGE = 0.2f // extra ambient pole strength at the peak of a music beat
 
 // Needle dynamics.
 private const val K_MIN = 6f
@@ -297,9 +302,13 @@ private class MagneticField {
         }
     }
 
-    fun step(dt: Float) {
+    fun step(dt: Float, beat: Float) {
         if (count == 0) return
         time += dt
+
+        // Music: the ambient poles swell a little on each beat; exactly the base charge otherwise.
+        val swell = 1f + BEAT_CHARGE * beat
+        for (k in 0 until AMBIENT_POLES) poleQ[k] = AMBIENT_CHARGE[k] * swell
 
         val aspect = height / width
         for (k in 0 until AMBIENT_POLES) {

@@ -46,10 +46,13 @@ import kotlin.random.Random
  * and settle back once the finger lifts (the glow fades over about a second). A tap sends out an
  * expanding ring that seeds new growth as it travels; holding still keeps pulsing rings. If the
  * field ever dies out, it reseeds itself.
+ *
+ * While music plays, the tissue and its rims brighten by a few percent on each beat.
  */
 @Composable
 fun ReactionDiffusionWallpaper(modifier: Modifier = Modifier) {
     val sim = remember { RdSim() }
+    val pulse = remember { MusicPulse() }
     val frame = remember { mutableLongStateOf(0L) }
     val resetGeneration = rememberResetGeneration()
     val generation = rememberUpdatedState(resetGeneration)
@@ -69,6 +72,7 @@ fun ReactionDiffusionWallpaper(modifier: Modifier = Modifier) {
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_DT)
                 last = now
                 t += dt
+                pulse.update(now)
 
                 if (!sim.ensure()) {
                     frame.longValue = now
@@ -122,7 +126,7 @@ fun ReactionDiffusionWallpaper(modifier: Modifier = Modifier) {
                 sim.step(sim.iterations)
                 sim.adaptIterations(System.nanoTime() - start)
 
-                sim.render()
+                sim.render(pulse.beat)
                 sim.checkHealth()
                 frame.longValue = now
             }
@@ -155,7 +159,7 @@ fun ReactionDiffusionWallpaper(modifier: Modifier = Modifier) {
                 srcSize = IntSize(glow.width, glow.height),
                 dstOffset = IntOffset.Zero,
                 dstSize = dst,
-                alpha = GLOW_ALPHA,
+                alpha = GLOW_ALPHA * (1f + BEAT_BODY_GAIN * sim.beat),
                 blendMode = BlendMode.Plus,
                 filterQuality = FilterQuality.Low,
             )
@@ -186,6 +190,10 @@ private const val B_SCALE = 255f / 0.38f
 private const val EDGE_SCALE = 255f / 0.22f
 
 private val BACKDROP = Color(0xFF020207)
+
+/** Music beat: brightness added to the tissue colours and to the rim light at the beat's peak. */
+private const val BEAT_BODY_GAIN = 0.05f
+private const val BEAT_RIM_GAIN = 0.35f
 
 /** Darkening over the clock area: alpha at the very top, and where it fades out (fraction of h). */
 private const val TOP_SHADE_ALPHA = 0.5f
@@ -298,6 +306,12 @@ private class RdSim {
 
     private val lut = IntArray(256)
     private val hotLut = IntArray(256)
+    /** [lut] brightened for the current music beat; only filled while a beat is sounding. */
+    private val beatLut = IntArray(256)
+
+    /** Music beat used for the last [render], 0..1. */
+    var beat = 0f
+        private set
     private var edgeR = 0
     private var edgeG = 0
     private var edgeB = 0
@@ -455,9 +469,10 @@ private class RdSim {
     /**
      * Maps B (plus a faint rim from its gradient) through the colour table into the bitmap,
      * blending toward the excited table where the tissue is warm, and builds the low-res bloom
-     * from the warm areas only.
+     * from the warm areas only. A music [beat] (0 when silent) lifts the colours and rims a little.
      */
-    fun render() {
+    fun render(beat: Float) {
+        this.beat = beat
         val bmp = bitmap ?: return
         val gBmp = glowBitmap ?: return
         val s = stride
@@ -468,11 +483,29 @@ private class RdSim {
         val hp = heat
         val warm = heatMax > HEAT_EPS
         val px = pixels
-        val table = lut
+        var table = lut
         val hot = hotLut
-        val er = edgeR
-        val eg = edgeG
-        val eb = edgeB
+        var er = edgeR
+        var eg = edgeG
+        var eb = edgeB
+        if (beat > 0f) {
+            // 256 table entries and three rim channels, so the per-cell loop is unchanged.
+            val q = ((1f + BEAT_BODY_GAIN * beat) * 256f).toInt()
+            val src = lut
+            val dst = beatLut
+            for (k in 0 until 256) {
+                val c = src[k]
+                val r = min(255, (((c shr 16) and 0xFF) * q) shr 8)
+                val g = min(255, (((c shr 8) and 0xFF) * q) shr 8)
+                val bl = min(255, ((c and 0xFF) * q) shr 8)
+                dst[k] = (0xFF shl 24) or (r shl 16) or (g shl 8) or bl
+            }
+            table = dst
+            val rim = 1f + BEAT_RIM_GAIN * beat
+            er = (er * rim).toInt()
+            eg = (eg * rim).toInt()
+            eb = (eb * rim).toInt()
+        }
         var sum = 0f
         for (y in 1..h) {
             var i = y * s + 1

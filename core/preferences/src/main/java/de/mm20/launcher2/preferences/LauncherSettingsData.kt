@@ -422,7 +422,7 @@ enum class WallpaperType {
     GravitySand,
     FlowField,
     ReactionDiffusion,
-    Attractor,
+    Tesseract,
     Topographic,
     Random,
 }

@@ -34,7 +34,7 @@ fun LauncherWallpaper(
         WallpaperType.GravitySand -> GravitySandWallpaper(modifier)
         WallpaperType.FlowField -> FlowFieldWallpaper(modifier)
         WallpaperType.ReactionDiffusion -> ReactionDiffusionWallpaper(modifier)
-        WallpaperType.Attractor -> AttractorWallpaper(modifier)
+        WallpaperType.Tesseract -> TesseractWallpaper(modifier)
         WallpaperType.Topographic -> TopographicWallpaper(modifier)
     }
 }
@@ -53,7 +53,7 @@ private val RandomPool = listOf(
     WallpaperType.GravitySand,
     WallpaperType.FlowField,
     WallpaperType.ReactionDiffusion,
-    WallpaperType.Attractor,
+    WallpaperType.Tesseract,
     WallpaperType.Topographic,
 )
 

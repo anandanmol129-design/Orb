@@ -204,7 +204,7 @@ fun HomescreenSettingsScreen() {
                         stringResource(R.string.preference_wallpaper_type_gravity_sand) to WallpaperType.GravitySand,
                         stringResource(R.string.preference_wallpaper_type_flow_field) to WallpaperType.FlowField,
                         stringResource(R.string.preference_wallpaper_type_reaction_diffusion) to WallpaperType.ReactionDiffusion,
-                        stringResource(R.string.preference_wallpaper_type_attractor) to WallpaperType.Attractor,
+                        stringResource(R.string.preference_wallpaper_type_tesseract) to WallpaperType.Tesseract,
                         stringResource(R.string.preference_wallpaper_type_topographic) to WallpaperType.Topographic,
                     ),
                     onValueChanged = {

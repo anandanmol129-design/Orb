@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.Box
 import de.mm20.launcher2.ui.locals.LocalDarkTheme
 import palettes.TonalPalette
 import java.time.Instant
@@ -62,13 +64,14 @@ private const val SunArcHalfDayMinutes = 12 * 60
  * (position along arc 0..1, distance factor relative to arc radius, size factor, twinkle phase).
  */
 private val SunArcStars = listOf(
-    floatArrayOf(0.10f, 0.62f, 1.0f, 0.0f),
-    floatArrayOf(0.24f, 1.16f, 0.8f, 1.7f),
-    floatArrayOf(0.38f, 0.74f, 1.2f, 3.1f),
-    floatArrayOf(0.55f, 1.20f, 0.9f, 4.4f),
-    floatArrayOf(0.66f, 0.58f, 0.7f, 2.3f),
+    // Kept on or outside the arc: the time is drawn inside it.
+    floatArrayOf(0.10f, 1.10f, 1.0f, 0.0f),
+    floatArrayOf(0.24f, 1.14f, 0.8f, 1.7f),
+    floatArrayOf(0.38f, 0.91f, 1.2f, 3.1f),
+    floatArrayOf(0.55f, 1.07f, 0.9f, 4.4f),
+    floatArrayOf(0.66f, 0.91f, 0.7f, 2.3f),
     floatArrayOf(0.80f, 1.12f, 1.1f, 5.2f),
-    floatArrayOf(0.92f, 0.70f, 0.8f, 0.9f),
+    floatArrayOf(0.92f, 1.08f, 0.8f, 0.9f),
 )
 
 private val SunArcSunriseColor = Color(0xFFFF8A3D)
@@ -181,12 +184,12 @@ fun SunArcClock(
     val arcColor = contentColor
     val travelledColor = if (useThemeColor) accentColor else contentColor
 
-    val canvasModifier = if (compact) {
-        Modifier.size(width = 64.dp, height = 36.dp)
-    } else {
-        Modifier
-            .padding(top = 8.dp)
-            .size(width = 224.dp, height = 116.dp)
+    // The arc wraps the time, so it is sized to enclose the digits.
+    val withSeconds = showSeconds && !compact
+    val canvasModifier = when {
+        compact -> Modifier.size(width = 100.dp, height = 50.dp)
+        withSeconds -> Modifier.size(width = 252.dp, height = 130.dp)
+        else -> Modifier.size(width = 188.dp, height = 100.dp)
     }
 
     val timeText = remember(hour, minute, second, showSeconds, twentyFourHours, compact) {
@@ -202,7 +205,10 @@ fun SunArcClock(
         }
     }
 
-    val textStyle = (if (compact) MaterialTheme.typography.displaySmall
+    val textStyle = (if (compact) MaterialTheme.typography.headlineSmall.copy(
+        fontSize = 22.sp,
+        lineHeight = 26.sp,
+    )
     else MaterialTheme.typography.displayMedium).copy(
         fontWeight = FontWeight.Normal,
         fontFeatureSettings = "tnum",
@@ -227,26 +233,21 @@ fun SunArcClock(
         }
     }
 
-    if (compact) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            canvas()
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = timeText, style = textStyle)
-        }
-    } else {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            canvas()
-            Text(
-                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                text = timeText,
-                style = textStyle,
-            )
-        }
+    // Time sits on the horizon line, inside the arc.
+    Box(
+        modifier = Modifier.padding(
+            top = if (compact) 0.dp else 16.dp,
+            bottom = if (compact) 0.dp else 12.dp,
+        ),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        canvas()
+        Text(
+            modifier = Modifier.padding(bottom = if (compact) 2.dp else 4.dp),
+            text = timeText,
+            style = textStyle,
+            maxLines = 1,
+        )
     }
 }
 
@@ -266,7 +267,7 @@ private fun DrawScope.SunArcDrawScene(
     val bottomPad = if (compact) 2.dp.toPx() else 4.dp.toPx()
     val horizonY = size.height - bottomPad
     val cx = size.width / 2f
-    val radius = min(size.width * 0.42f, (size.height - bottomPad) * 0.80f)
+    val radius = min(size.width * 0.46f, (size.height - bottomPad) * 0.90f)
     val bodyRadius = radius * (if (compact) 0.15f else 0.11f)
 
     val strokeWidth = if (compact) 1.dp.toPx() else 1.5.dp.toPx()

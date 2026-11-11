@@ -1,5 +1,9 @@
 package de.mm20.launcher2.ui.settings.orb
 
+import android.app.role.RoleManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -82,6 +86,21 @@ fun OrbSettingsScreen(
     val voiceSettings: VoiceSettings = koinInject()
     val pieRepository: PieRepository = koinInject()
     val appRepository: AppRepository = koinInject()
+    val context = LocalContext.current
+    var isDefaultAssistant by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                (context.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true)
+        )
+    }
+    val assistantRoleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            isDefaultAssistant = context.getSystemService(RoleManager::class.java)
+                ?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
+        }
+    }
 
     var cloudEnabled by remember { mutableStateOf(voiceSettings.cloudEnabled) }
     var provider by remember { mutableStateOf(voiceSettings.provider) }
@@ -120,6 +139,38 @@ fun OrbSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { SectionTitle("Voice") }
+            item {
+                OutlinedCard {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Default assistant", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.size(4.dp))
+                        Text(
+                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                "Android's assistant app role requires Android 10 or later."
+                            } else if (isDefaultAssistant) {
+                                "Orb is your default assistant. Use your device's assistant gesture to open it."
+                            } else {
+                                "Let Android open Orb from your device's assistant gesture."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !isDefaultAssistant) {
+                            Spacer(Modifier.size(12.dp))
+                            Button(onClick = {
+                                val roleManager = context.getSystemService(RoleManager::class.java)
+                                if (roleManager?.isRoleAvailable(RoleManager.ROLE_ASSISTANT) == true) {
+                                    assistantRoleLauncher.launch(
+                                        roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT)
+                                    )
+                                }
+                            }) {
+                                Text("Set Orb as assistant")
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 OutlinedCard {
                     Column(Modifier.padding(16.dp)) {
@@ -224,7 +275,7 @@ fun OrbSettingsScreen(
                             )
                             Spacer(Modifier.size(8.dp))
                             Text(
-                                "On-device commands (open apps, timers, alarms, flashlight, search) always work offline.",
+                                "On-device commands (open apps, call contacts, timers, alarms, flashlight, search) always work offline.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

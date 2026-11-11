@@ -35,6 +35,11 @@
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
     <uses-permission android:name="org.tasks.permission.READ_TASKS" />
 
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+    </queries>
+
     <application
         android:name=".LauncherApplication"
         android:allowBackup="true"

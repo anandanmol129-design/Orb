@@ -251,10 +251,10 @@ internal enum class ClockWidgetStyleEnum {
     Segment,
     Flip,
     SunArc,
-    Liquid,
     Particles,
-    Pendulum,
     // Retained so builds that briefly offered these styles can still read their saved setting.
+    Liquid,
+    Pendulum,
     Reactor,
     EclipseBloom,
     AuroraDrift,

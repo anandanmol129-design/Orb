@@ -3,21 +3,29 @@ package de.mm20.launcher2.voice
 import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.net.Uri
 import android.provider.AlarmClock
 import de.mm20.launcher2.agent.AgentPlugin
 import de.mm20.launcher2.agent.Schema
 import de.mm20.launcher2.agent.ToolResult
 import de.mm20.launcher2.agent.ToolSpec
+import de.mm20.launcher2.agent.boolean
+import de.mm20.launcher2.agent.string
 import de.mm20.launcher2.applications.AppRepository
+import de.mm20.launcher2.search.Contact
+import de.mm20.launcher2.search.SearchableRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import androidx.core.content.ContextCompat
 
 /**
  * Launcher-level agent tools: launching apps, search, and simple system actions.
@@ -29,6 +37,7 @@ import kotlinx.serialization.json.put
 class LauncherToolsPlugin(
     private val context: Context,
     private val appRepository: AppRepository,
+    private val contacts: SearchableRepository<Contact>,
 ) : AgentPlugin {
 
     override val id: String = "orb.launcher"
@@ -73,6 +82,20 @@ class LauncherToolsPlugin(
                 "label" to Schema.string("Optional label for the alarm."),
             ),
         ),
+        ToolSpec(
+            name = "orb.calls.phone",
+            description = "Call a person using the phone app. Ask for spoken confirmation before opening the dialer.",
+            parameters = Schema.obj(
+                "contact" to Schema.string("Person's name or phone number.", required = true),
+            ),
+        ),
+        ToolSpec(
+            name = "orb.calls.whatsapp_video",
+            description = "Start a WhatsApp video call to a contact. Ask for spoken confirmation first.",
+            parameters = Schema.obj(
+                "contact" to Schema.string("Person's name.", required = true),
+            ),
+        ),
     )
 
     override suspend fun invoke(name: String, args: JsonObject): ToolResult = when (name) {
@@ -81,7 +104,95 @@ class LauncherToolsPlugin(
         "orb.system.torch" -> torch(args)
         "orb.system.set_timer" -> setTimer(args)
         "orb.system.set_alarm" -> setAlarm(args)
+        "orb.calls.phone" -> phoneCall(args)
+        "orb.calls.whatsapp_video" -> whatsappVideoCall(args)
         else -> ToolResult.Error("Unknown tool: $name")
+    }
+
+    private suspend fun phoneCall(args: JsonObject): ToolResult {
+        val target = args.string("contact")?.trim().orEmpty()
+        if (target.isBlank()) return ToolResult.Error("Who should I call?")
+        val isPhoneNumber = target.filter(Char::isDigit).length >= 7
+        val contact = if (isPhoneNumber) null else resolveContact(target)
+        val number = if (contact == null && isPhoneNumber) {
+            target
+        } else {
+            contact?.phoneNumbers?.firstOrNull()?.number
+        } ?: return ToolResult.Error("I couldn't find a phone number for $target.")
+
+        if (args.boolean("confirmed") != true) {
+            return ToolResult.ConfirmationRequired(
+                "Call ${contact?.name ?: target} at $number? Say yes to continue."
+            )
+        }
+        val canPlaceCall = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CALL_PHONE) ==
+            PackageManager.PERMISSION_GRANTED
+        val intent = Intent(
+            if (canPlaceCall) Intent.ACTION_CALL else Intent.ACTION_DIAL,
+            Uri.fromParts("tel", number, null),
+        )
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return startIntent(
+            intent,
+            if (canPlaceCall) "Calling ${contact?.name ?: target}."
+            else "Opening the phone dialer for ${contact?.name ?: target}.",
+        )
+    }
+
+    private suspend fun whatsappVideoCall(args: JsonObject): ToolResult {
+        val target = args.string("contact")?.trim().orEmpty()
+        if (target.isBlank()) return ToolResult.Error("Who should I video call?")
+        val contact = resolveContact(target)
+            ?: return ToolResult.Error("I couldn't find $target in your enabled contacts.")
+
+        if (args.boolean("confirmed") != true) {
+            return ToolResult.ConfirmationRequired(
+                "Video call ${contact.name} on WhatsApp? Say yes to continue."
+            )
+        }
+
+        val directAction = contact.customActions.firstOrNull { action ->
+            action.packageName in WHATSAPP_PACKAGES &&
+                action.mimeType?.contains("video.call", ignoreCase = true) == true
+        }
+        if (directAction != null) {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(directAction.uri, directAction.mimeType)
+                setPackage(directAction.packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            return startIntent(intent, "Opening a WhatsApp video call with ${contact.name}.")
+        }
+
+        val number = contact.phoneNumbers.firstOrNull()?.number
+            ?: return ToolResult.Error("I couldn't find a phone number for ${contact.name}.")
+        val digits = number.filter(Char::isDigit)
+        if (digits.length < 7) return ToolResult.Error("I couldn't use ${contact.name}'s saved number for WhatsApp.")
+        val whatsappPackage = WHATSAPP_PACKAGES.firstOrNull { packageName ->
+            try {
+                context.packageManager.getPackageInfo(packageName, 0)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        } ?: return ToolResult.Error("WhatsApp isn't installed.")
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$digits")).apply {
+            setPackage(whatsappPackage)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return startIntent(
+            intent,
+            "Opening ${contact.name}'s WhatsApp chat. Tap the video call button to start the call.",
+        )
+    }
+
+    private suspend fun resolveContact(query: String): Contact? {
+        val matches = withTimeoutOrNull(CONTACT_LOOKUP_TIMEOUT_MS) {
+            contacts.search(query, allowNetwork = false).first { it.isNotEmpty() }
+        }.orEmpty()
+        return matches.firstOrNull { it.name.equals(query, ignoreCase = true) }
+            ?: matches.firstOrNull { it.name.startsWith(query, ignoreCase = true) }
+            ?: matches.firstOrNull { it.name.contains(query, ignoreCase = true) }
     }
 
     private suspend fun openApp(args: JsonObject): ToolResult {
@@ -173,5 +284,10 @@ class LauncherToolsPlugin(
             minutes > 0 -> "$minutes minutes"
             else -> "$seconds seconds"
         }
+    }
+
+    private companion object {
+        val WHATSAPP_PACKAGES = listOf("com.whatsapp", "com.whatsapp.w4b")
+        const val CONTACT_LOOKUP_TIMEOUT_MS = 2_500L
     }
 }

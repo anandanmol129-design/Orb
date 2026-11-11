@@ -56,6 +56,7 @@ dependencies {
     implementation(project(":core:base"))
     implementation(project(":core:ktx"))
     implementation(project(":data:applications"))
+    implementation(project(":data:contacts"))
 
     testImplementation(libs.bundles.tests)
 }

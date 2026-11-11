@@ -7,6 +7,8 @@ private val torchLabel = Regex("^(flashlight|torch|light)\\s+(on|off)$")
 private val setTimer = Regex("^(set\\s+)?(a\\s+)?timer\\s+(for\\s+)?(.+)$")
 private val setAlarm = Regex("^(set\\s+)?(an?\\s+)?alarm\\s+(for\\s+)?(\\d{1,2})(:(\\d{2}))?\\s*(am|pm)?$")
 private val searchQuery = Regex("^(search|google|look\\s+up)\\s+(for\\s+)?(.+)$")
+private val whatsappVideoCall = Regex("^(?:make\\s+)?(?:a\\s+)?video\\s+call\\s+(?:to\\s+)?(.+?)(?:\\s+on\\s+whats?app)?$")
+private val phoneCall = Regex("^(?:(?:make|place)\\s+)?(?:a\\s+)?(?:phone\\s+)?(?:call|phone)\\s+(?:to\\s+)?(.+)$")
 private val openApp = Regex("^(open|launch|start|run)\\s+(.+)$")
 private val durationSpec = Regex("(\\d+|[a-z]+)\\s*(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\\b")
 
@@ -40,6 +42,7 @@ class LocalIntentParser {
         parseTimer(text)?.let { return it }
         parseAlarm(text)?.let { return it }
         parseSearch(text)?.let { return it }
+        parseCall(text)?.let { return it }
         parseOpenApp(text)?.let { return it }
         return null
     }
@@ -89,6 +92,28 @@ class LocalIntentParser {
         val app = match.groupValues[2].trim()
         if (app.isEmpty()) return null
         return ToolInvocation("orb.apps.open", ToolArgs.of("appName" to app))
+    }
+
+    private fun parseCall(text: String): ToolInvocation? {
+        whatsappVideoCall.find(text)?.let {
+            val contact = it.groupValues[1].trim()
+            if (contact.isNotEmpty()) {
+                return ToolInvocation(
+                    "orb.calls.whatsapp_video",
+                    ToolArgs.of("contact" to contact),
+                )
+            }
+        }
+        phoneCall.find(text)?.let {
+            val contact = it.groupValues[1].trim()
+            if (contact.isNotEmpty()) {
+                return ToolInvocation(
+                    "orb.calls.phone",
+                    ToolArgs.of("contact" to contact),
+                )
+            }
+        }
+        return null
     }
 
     private fun parseDurationSeconds(text: String): Long? {

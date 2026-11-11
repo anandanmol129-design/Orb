@@ -1,68 +1,42 @@
-# Kvaesitso
+<p align="center">
+  <img src="assets/orb-logo.svg" width="160" alt="Orb logo">
+</p>
 
-<img src="https://raw.githubusercontent.com/MM2-0/Kvaesitso/main/assets/icons/ic_launcher.png" width="128">
+<h1 align="center">Orb</h1>
 
-Kvaesitso is a search focused, free and open source launcher for Android.
+<p align="center"><b>A living, voice-first Android launcher.</b><br>
+An expressive orb companion, animated clocks and interactive live wallpapers, built on a fast search core.</p>
 
-[Website and documentation](https://kvaesitso.mm20.de)
+---
+
+Orb started as a fork of [Kvaesitso](https://github.com/MM2-0/Kvaesitso) and has since grown into its own launcher. The search engine underneath is still there; the home screen, assistant and visuals are new.
+
+## Features
+
+- **The Orb** – an animated companion on your home screen with squash-and-stretch body language, blinking, gazing eyes and per-state poses for listening, thinking, success, error and music. Tap, double-tap or long-press it.
+- **Voice assistant** – talk to the orb to launch apps and run launcher actions, with an on-device intent parser for common commands.
+- **Animated clocks** – Simple, Flip, Particles, Sun arc and more. Tap the time for alarms, the date for your calendar.
+- **Interactive live wallpapers** – Aurora (reacts to your voice), Light strings, Tesseract, Reaction-diffusion, Fluid ink, Gravity sand, Flow field, Magnetic field, Topographic, Water, Prism, Solar system, Boids, Mandelbrot, Double pendulum, Games – or let Random pick.
+- **Feed reader** – a swipeable feed right from the home screen.
+- **Fast search** – apps, contacts, calendar, files, locations and more, tuned for speed (cached pipelines, batched queries, baseline profile).
 
 ## Installation
 
-### Using an F-Droid client and MM20's repo
+Download the latest APK from the [releases page](https://github.com/anandanmol129-design/Orb/releases) (debug builds also live in `apk/`) and install it manually.
 
-The preferred way of installation is using the [F-Droid](https://f-droid.org) application. That way
-you will always be notified about updates. Kvaesitso is available in the official F-Droid
-repository, but all features depending on non-foss external APIs were removed.
-For feature-complete builds you can add [MM20's repository](https://fdroid.mm20.de). Just scan the code below or open
-the link on your phone:
+## Building
 
-<img src="https://fdroid.mm20.de/repo/index.png" width="150" alt="QR code">
-
-https://fdroid.mm20.de/repo/
-
-The same version is also available in [IzzyOnDroid's repository](https://apt.izzysoft.de/fdroid/index/apk/de.mm20.launcher2.release).
-
-### Manual installation
-
-You can also download the latest release from
-the [releases page](https://github.com/MM2-0/Kvaesitso/releases/latest) and install it manually.
+```bash
+./gradlew :app:app:assembleDebug
+```
 
 ## Report issues
 
-If you notice any bugs or issues create a new issue in
-the [issue tracker](https://github.com/MM2-0/Kvaesitso/issues). Before you do, please search the
-existing issues for any similar issues. Please include any relevant information such as steps to
-reproduce, stack traces, logs, and device information. These information can be founder under
-Settings > Debug > Crash reporter and Settings > Debug > Export debug information.
+Open an issue in the [issue tracker](https://github.com/anandanmol129-design/Orb/issues). Include steps to reproduce and device info (Settings > Debug > Export debug information).
 
-## Feature requests
+## Credits
 
-If you have an idea for a new feature, just create a new issue. However, there is no guarantee that
-they will be implemented. If it's important for you, consider implementing it yourself,
-see [contribute](#contribute).
-
-
-## Contribute
-
-Contributions are always welcome. If you want to fix any existing issues or implement smaller new
-features just create a new pull request. If you plan to implement any (bigger) new features, please
-create an issue first so we can discuss if and how this feature should be implemented.
-
-If you want to help translating, see [how to translate the project.](https://kvaesitso.mm20.de/docs/contributor-guide/i18n)
-
-<a href="https://i18n.mm20.de/engage/kvaesitso/">
-<img src="https://i18n.mm20.de/widgets/kvaesitso/-/287x66-grey.png" alt ="Translation Status">
-</a>
-
-## Links
-
-- User guide: https://kvaesitso.mm20.de/docs/user-guide
-- F-Droid-Repository: https://fdroid.mm20.de
-
-## Thanks to
-
-- [@EliotAku](https://github.com/EliotAku) for the app icon
-- All [translators and code contributors](https://github.com/MM2-0/Kvaesitso/graphs/contributors)
+Orb is built on [Kvaesitso](https://github.com/MM2-0/Kvaesitso) by MM2-0 and its contributors. Thank you for the excellent foundation.
 
 ## License
 
@@ -71,6 +45,7 @@ This software is free software licensed under the GNU General Public License 3.0
 ```
 
 Copyright (C) 2021–2026 MM2-0 and the Kvaesitso contributors
+Copyright (C) 2026 the Orb contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

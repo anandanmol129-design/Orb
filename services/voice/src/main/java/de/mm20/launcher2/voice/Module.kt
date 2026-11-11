@@ -1,6 +1,9 @@
 package de.mm20.launcher2.voice
 
 import de.mm20.launcher2.agent.AgentPlugin
+import de.mm20.launcher2.search.Contact
+import de.mm20.launcher2.search.SearchableRepository
+import org.koin.core.qualifier.named
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
@@ -19,5 +22,5 @@ val voiceModule = module {
     }
 
     // Launcher-level tools participate in the same registry as feature plugins.
-    single<AgentPlugin> { LauncherToolsPlugin(androidContext(), get()) }
+    single<AgentPlugin> { LauncherToolsPlugin(androidContext(), get(), get(named<Contact>())) }
 }

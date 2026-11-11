@@ -64,9 +64,7 @@ import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.DigitalClock1
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.DigitalClock2
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.OrbitClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.FlipClock
-import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.LiquidClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.ParticleClock
-import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.PendulumClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SunArcClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SegmentClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.PartProvider
@@ -326,15 +324,6 @@ fun Clock(
             darkColors = darkColors,
         )
 
-        is ClockWidgetStyle.Liquid -> LiquidClock(
-            time = time,
-            compact = compact,
-            showSeconds = showSeconds,
-            twentyFourHours = isTwentyFourHours,
-            useThemeColor = useThemeColor,
-            darkColors = darkColors,
-        )
-
         is ClockWidgetStyle.Particles -> ParticleClock(
             time = time,
             compact = compact,
@@ -345,15 +334,6 @@ fun Clock(
         )
 
         is ClockWidgetStyle.SunArc -> SunArcClock(
-            time = time,
-            compact = compact,
-            showSeconds = showSeconds,
-            twentyFourHours = isTwentyFourHours,
-            useThemeColor = useThemeColor,
-            darkColors = darkColors,
-        )
-
-        is ClockWidgetStyle.Pendulum -> PendulumClock(
             time = time,
             compact = compact,
             showSeconds = showSeconds,

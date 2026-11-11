@@ -511,10 +511,8 @@ fun getClockStyleName(context: Context, style: ClockWidgetStyle): String {
         is ClockWidgetStyle.Analog -> context.getString(R.string.clock_style_analog)
         is ClockWidgetStyle.Segment -> context.getString(R.string.clock_style_segment)
         is ClockWidgetStyle.Flip -> context.getString(R.string.clock_style_flip)
-        is ClockWidgetStyle.Liquid -> context.getString(R.string.clock_style_liquid)
         is ClockWidgetStyle.Particles -> context.getString(R.string.clock_style_particles)
         is ClockWidgetStyle.SunArc -> context.getString(R.string.clock_style_sun_arc)
-        is ClockWidgetStyle.Pendulum -> context.getString(R.string.clock_style_pendulum)
         is ClockWidgetStyle.Empty -> context.getString(R.string.clock_style_empty)
         is ClockWidgetStyle.Custom -> context.getString(R.string.clock_style_custom)
         else -> ""

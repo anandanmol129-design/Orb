@@ -298,6 +298,7 @@ class VoiceController(
                 "I didn't understand that."
             } else {
                 "I can open apps, set timers and alarms, toggle the flashlight, and search. " +
+                    "I can also call a contact or open their WhatsApp video-call action. " +
                     "Enable cloud commands for more."
             }
             _state.value = VoiceUiState.Error(message)

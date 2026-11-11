@@ -77,9 +77,9 @@ class ClockWidgetSettings internal constructor(
                 ClockWidgetStyleEnum.Segment -> ClockWidgetStyle.Segment
                 ClockWidgetStyleEnum.Flip -> ClockWidgetStyle.Flip
                 ClockWidgetStyleEnum.SunArc -> ClockWidgetStyle.SunArc
-                ClockWidgetStyleEnum.Liquid -> ClockWidgetStyle.Liquid
                 ClockWidgetStyleEnum.Particles -> ClockWidgetStyle.Particles
-                ClockWidgetStyleEnum.Pendulum -> ClockWidgetStyle.Pendulum
+                ClockWidgetStyleEnum.Liquid,
+                ClockWidgetStyleEnum.Pendulum,
                 ClockWidgetStyleEnum.Reactor,
                 ClockWidgetStyleEnum.EclipseBloom,
                 ClockWidgetStyleEnum.AuroraDrift,

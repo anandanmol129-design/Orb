@@ -30,7 +30,11 @@ class ClockWidgetSettingsScreenVM : ViewModel(), KoinComponent {
             ClockWidgetStyle.Orbit,
             ClockWidgetStyle.Segment,
             ClockWidgetStyle.Binary,
-            ClockWidgetStyle.Reactor,
+            ClockWidgetStyle.Flip,
+            ClockWidgetStyle.Liquid,
+            ClockWidgetStyle.Particles,
+            ClockWidgetStyle.SunArc,
+            ClockWidgetStyle.Pendulum,
             custom,
             ClockWidgetStyle.Empty,
         )

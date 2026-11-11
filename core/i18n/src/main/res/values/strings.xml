@@ -944,7 +944,11 @@
     <string name="clock_style_binary">Binary</string>
     <string name="clock_style_analog">Hands</string>
     <string name="clock_style_segment">7-segment</string>
-    <string name="clock_style_reactor">Orbital Reactor</string>
+    <string name="clock_style_flip">Flip</string>
+    <string name="clock_style_liquid">Liquid</string>
+    <string name="clock_style_particles">Particles</string>
+    <string name="clock_style_sun_arc">Sun arc</string>
+    <string name="clock_style_pendulum">Pendulum</string>
     <string name="clock_style_empty">No clock</string>
     <string name="clock_style_custom">Custom widget</string>
     <string name="clock_variant_outlined">Outlined</string>

@@ -173,13 +173,20 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var orbShape by remember { mutableStateOf(pieRepository.orbShape()) }
         var orbFill by remember { mutableStateOf(pieRepository.orbFill()) }
 
-        // Re-read the shape and fill when the settings activity returns, since they may have changed there.
+        // Re-read the orb state when the settings activity returns, since it may have been
+        // changed there (shape, fill, menu items) or replaced wholesale by a backup restore.
         val lifecycleOwner = LocalLifecycleOwner.current
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
                     orbShape = pieRepository.orbShape()
                     orbFill = pieRepository.orbFill()
+                    if (!editMode) {
+                        items = pieRepository.items()
+                        orbCX = pieRepository.orbCenterX()
+                        orbCY = pieRepository.orbCenterY()
+                        orbScale = pieRepository.orbScale()
+                    }
                     greetCount++
                 }
             }

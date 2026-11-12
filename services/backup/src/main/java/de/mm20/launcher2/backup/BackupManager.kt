@@ -117,6 +117,11 @@ class BackupManager(
         var entry = zipStream.nextEntry
         while(entry != null) {
             val file = File(outDir, entry.name)
+            if (entry.isDirectory || !file.canonicalPath.startsWith(outDir.canonicalPath + File.separator)) {
+                zipStream.closeEntry()
+                entry = zipStream.nextEntry
+                continue
+            }
             file.outputStream().use {
                 zipStream.copyTo(it)
             }
@@ -140,10 +145,11 @@ class BackupManager(
          * Format changelog:
          * - 1.5: added `weight` to favorites
          * - 1.9: migrate from proto to json data store
+         * - 1.10: added orb state, voice settings and RSS subscriptions (prefs.* files)
          */
 
         private const val BackupFormatMajor = 1
-        private const val BackupFormatMinor = 9
+        private const val BackupFormatMinor = 10
         internal const val BackupFormat = "$BackupFormatMajor.$BackupFormatMinor"
     }
 }

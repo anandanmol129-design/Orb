@@ -13,11 +13,9 @@ import de.mm20.launcher2.permissions.PermissionGroup
 import de.mm20.launcher2.permissions.PermissionsManager
 import de.mm20.launcher2.preferences.weather.WeatherSettings
 import de.mm20.launcher2.ui.R
-import kotlin.math.max
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,14 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import de.mm20.launcher2.preferences.ClockWidgetStyle
 import de.mm20.launcher2.preferences.MeasurementSystem
-import de.mm20.launcher2.preferences.ui.ClockWidgetSettings
 import de.mm20.launcher2.ui.base.LocalTime
 import de.mm20.launcher2.ui.component.weather.WeatherIcon
 import de.mm20.launcher2.ui.component.weather.WeatherIconDefaults
-import de.mm20.launcher2.ui.locals.LocalDarkTheme
 import de.mm20.launcher2.ui.locals.LocalMeasurementSystem
 import de.mm20.launcher2.weather.Forecast
 import de.mm20.launcher2.weather.WeatherRepository
@@ -54,11 +49,10 @@ import de.mm20.launcher2.ui.component.weather.WeatherIcon as WeatherIconKind
 private const val MaxForecastAgeMs = 3 * 60 * 60 * 1000L
 
 /**
- * A built-in clock face plus the current weather beside it, sized to the configured clock box.
+ * A built-in clock face sized to the configured clock box.
  *
- * Digit clocks are stretched to fill the box (taller or wider digits, like a lock-screen clock);
+ * Digit faces are stretched to fill the box exactly (like a lock-screen clock), while
  * round clocks (analog, orbit, sun arc) are scaled uniformly so they never turn into ellipses.
- * The weather is never stretched: it scales uniformly with the box height.
  *
  * Custom (app widget) clocks and the empty style are passed through untouched: custom clocks
  * have their own size and the empty style has nothing to show.
@@ -79,19 +73,12 @@ fun ClockFace(
         Clock(style, compact, darkColors)
         return
     }
-    val clockSettings: ClockWidgetSettings = koinInject()
-    val showWeather by clockSettings.showWeather.collectAsState(initial = true)
-
     ClockBoxLayout(
         width = width?.dp,
         height = height?.dp,
         stretch = style.isStretchable,
-        gap = if (compact) 12.dp else 16.dp,
         modifier = modifier,
         clock = { Clock(style, compact, darkColors) },
-        weather = if (showWeather) {
-            { ClockWeather(compact = compact, darkColors = darkColors) }
-        } else null,
     )
 }
 
@@ -106,95 +93,57 @@ private val ClockWidgetStyle.isStretchable: Boolean
     }
 
 /**
- * Lays out [clock] and an optional [weather] readout side by side inside a [width] × [height]
- * box.
+ * Lays out [clock] inside a [width] × [height] box.
  *
- * Both are first measured at their natural size. With no box size the pair keeps that size
- * (shrunk uniformly only if wider than the screen). With a box size, the weather is scaled
- * uniformly in proportion to the box height, and the clock takes the remaining space: stretched
- * to fill it exactly when [stretch] is set, otherwise scaled uniformly and centered. With only one
- * dimension given, the other follows the natural aspect ratio.
+ * The clock is first measured at its natural size. With no box size it keeps that size (shrunk
+ * uniformly only if wider than the screen). With a box size it is stretched to fill the box
+ * exactly when [stretch] is set, otherwise scaled uniformly and centered. With only one dimension
+ * given, the other follows the natural aspect ratio.
  */
 @Composable
 private fun ClockBoxLayout(
     width: Dp?,
     height: Dp?,
     stretch: Boolean,
-    gap: Dp,
     modifier: Modifier = Modifier,
     clock: @Composable () -> Unit,
-    weather: (@Composable () -> Unit)?,
 ) {
-    Layout(
-        contents = listOf(clock, weather ?: {}),
-        modifier = modifier,
-    ) { (clockMeasurables, weatherMeasurables), constraints ->
+    Layout(content = clock, modifier = modifier) { measurables, constraints ->
         val avail =
             if (constraints.hasBoundedWidth) constraints.maxWidth else Constraints.Infinity
-
-        val weatherP = weatherMeasurables.firstOrNull()?.measure(Constraints())
-        val wW = weatherP?.width ?: 0
-        val wH = weatherP?.height ?: 0
-        val gapPx = if (weatherP != null && wW > 0) gap.roundToPx() else 0
-
-        val clockMax = if (avail == Constraints.Infinity) avail
-        else (avail - wW - gapPx).coerceAtLeast(1)
-        val clockP = clockMeasurables.firstOrNull()?.measure(Constraints(maxWidth = clockMax))
+        val clockP = measurables.firstOrNull()?.measure(Constraints(maxWidth = avail))
         val cW = (clockP?.width ?: 0).coerceAtLeast(1)
         val cH = (clockP?.height ?: 0).coerceAtLeast(1)
-
-        val naturalW = cW + gapPx + wW
-        val naturalH = max(cH, wH).coerceAtLeast(1)
 
         val targetW = width?.roundToPx()?.coerceAtMost(avail)
         val targetH = height?.roundToPx()
 
         val boxW: Int
         val boxH: Int
-        val weatherScale: Float
         if (targetW == null && targetH == null) {
-            val s = min(1f, avail.toFloat() / naturalW)
-            boxW = (naturalW * s).roundToInt()
-            boxH = (naturalH * s).roundToInt()
-            weatherScale = s
+            val s = min(1f, avail.toFloat() / cW)
+            boxW = (cW * s).roundToInt()
+            boxH = (cH * s).roundToInt()
         } else {
-            boxH = targetH ?: (naturalH * (targetW!!.toFloat() / naturalW)).roundToInt()
-            boxW = targetW ?: (naturalW * (boxH.toFloat() / naturalH)).roundToInt()
-                .coerceAtMost(avail)
-            // Weather follows the box height, but never takes more than ~40% of the width.
-            val byHeight = (boxH.toFloat() / naturalH).coerceIn(0.6f, 1.6f)
-            val byWidth = if (wW > 0) boxW * 0.4f / (wW + gapPx) else byHeight
-            weatherScale = min(byHeight, byWidth)
+            boxH = targetH ?: (cH * (targetW!!.toFloat() / cW)).roundToInt()
+            boxW = targetW ?: (cW * (boxH.toFloat() / cH)).roundToInt().coerceAtMost(avail)
         }
 
         val finalW = boxW.coerceIn(constraints.minWidth, constraints.maxWidth)
         val finalH = boxH.coerceIn(constraints.minHeight, constraints.maxHeight)
 
-        val weatherAreaW = ((wW + gapPx) * weatherScale)
-        val clockAreaW = (finalW - weatherAreaW).coerceAtLeast(1f)
-        val clockAreaH = finalH.toFloat()
-
-        val uniform = min(clockAreaW / cW, clockAreaH / cH)
+        val uniform = min(finalW.toFloat() / cW, finalH.toFloat() / cH)
         val stretchActive = stretch && (targetW != null || targetH != null)
-        val sx = if (stretchActive) clockAreaW / cW else uniform
-        val sy = if (stretchActive) clockAreaH / cH else uniform
+        val sx = if (stretchActive) finalW.toFloat() / cW else uniform
+        val sy = if (stretchActive) finalH.toFloat() / cH else uniform
 
         layout(finalW, finalH) {
             clockP?.let { p ->
-                val x = ((clockAreaW - p.width * sx) / 2f).roundToInt()
-                val y = ((clockAreaH - p.height * sy) / 2f).roundToInt()
+                val x = ((finalW - p.width * sx) / 2f).roundToInt()
+                val y = ((finalH - p.height * sy) / 2f).roundToInt()
                 p.placeWithLayer(x, y) {
                     scaleX = sx
                     scaleY = sy
-                    transformOrigin = TransformOrigin(0f, 0f)
-                }
-            }
-            weatherP?.let { p ->
-                val x = (clockAreaW + gapPx * weatherScale).roundToInt()
-                val y = ((finalH - p.height * weatherScale) / 2f).roundToInt()
-                p.placeWithLayer(x, y) {
-                    scaleX = weatherScale
-                    scaleY = weatherScale
                     transformOrigin = TransformOrigin(0f, 0f)
                 }
             }
@@ -203,8 +152,8 @@ private fun ClockBoxLayout(
 }
 
 /**
- * Current temperature with a condition icon, e.g. "28°C". Renders nothing when there is no
- * recent forecast (no weather provider, or stale data).
+ * Current temperature with a condition icon, e.g. "28°C", styled like the clock's date line.
+ * Without a recent forecast it shows the location prompt if that is the cause, else nothing.
  */
 @Composable
 fun ClockWeather(
@@ -226,19 +175,11 @@ fun ClockWeather(
     }
 
     val measurementSystem = LocalMeasurementSystem.current
-    val clockSettings: ClockWidgetSettings = koinInject()
-    val useThemeColor by clockSettings.useThemeColor.collectAsState(initial = false)
-
-    val color = if (useThemeColor) {
-        if (!darkColors) {
-            if (LocalDarkTheme.current) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.primaryContainer
-        } else {
-            if (LocalDarkTheme.current) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.primary
-        }
+    // Same text style as the date line it sits in.
+    val textStyle = if (compact) {
+        MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium)
     } else {
-        LocalContentColor.current
+        MaterialTheme.typography.titleMedium
     }
 
     Row(
@@ -253,16 +194,12 @@ fun ClockWeather(
             colors = WeatherIconDefaults.colors(
                 background = if (darkColors) Color.White else Color.Black
             ),
-            modifier = Modifier.size(if (compact) 24.dp else 32.dp),
+            modifier = Modifier.size(if (compact) 24.dp else 20.dp),
         )
         Text(
             text = formatClockTemperature(forecast.temperature, measurementSystem),
             modifier = Modifier.padding(start = 6.dp),
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = if (compact) 20.sp else 26.sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
-            color = color,
+            style = textStyle,
             maxLines = 1,
             softWrap = false,
         )

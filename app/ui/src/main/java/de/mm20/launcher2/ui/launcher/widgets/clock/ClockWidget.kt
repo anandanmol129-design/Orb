@@ -67,6 +67,7 @@ import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.FlipClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.ParticleClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SunArcClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SegmentClock
+import de.mm20.launcher2.ui.launcher.widgets.clock.parts.DatePartProvider
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.PartProvider
 import de.mm20.launcher2.ui.launcher.wallpaper.depth.depthForeground
 import de.mm20.launcher2.ui.locals.LocalPreferDarkContentOverWallpaper
@@ -180,13 +181,12 @@ fun ClockWidget(
                                     )
                                 }
 
-                                if (partProvider != null) {
-                                    DynamicZone(
-                                        modifier = Modifier.padding(bottom = 8.dp),
-                                        compact = false,
-                                        provider = partProvider,
-                                    )
-                                }
+                                PartWithWeather(
+                                    modifier = Modifier.padding(bottom = 8.dp),
+                                    compact = false,
+                                    provider = partProvider,
+                                    darkColors = darkColors,
+                                )
                             }
                         }
                         if (compact == true) {
@@ -197,13 +197,12 @@ fun ClockWidget(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                if (partProvider != null) {
-                                    DynamicZone(
-                                        modifier = Modifier.weight(1f),
-                                        compact = true,
-                                        provider = partProvider,
-                                    )
-                                }
+                                PartWithWeather(
+                                    modifier = Modifier.weight(1f),
+                                    compact = true,
+                                    provider = partProvider,
+                                    darkColors = darkColors,
+                                )
                                 if (clockStyle !is ClockWidgetStyle.Empty) {
                                     Box(
                                         modifier = Modifier
@@ -360,6 +359,42 @@ fun Clock(
         is ClockWidgetStyle.Custom -> CustomClock(style, compact, useThemeColor, darkColors)
         is ClockWidgetStyle.Empty -> {}
         else -> {}
+    }
+}
+
+/**
+ * The dynamic zone with the current weather. Next to the date it reads as one line
+ * ("Thursday, November 12  ☁ 25°C"); with another part (music, alarm, …) the weather gets its own
+ * line so it stays visible.
+ */
+@Composable
+private fun PartWithWeather(
+    modifier: Modifier,
+    compact: Boolean,
+    provider: PartProvider?,
+    darkColors: Boolean,
+) {
+    val clockSettings: ClockWidgetSettings = koinInject()
+    val showWeather by clockSettings.showWeather.collectAsState(initial = true)
+    val weather = @Composable {
+        if (showWeather) ClockWeather(compact = compact, darkColors = darkColors)
+    }
+    if (!compact && (provider == null || provider is DatePartProvider)) {
+        Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+            if (provider != null) DynamicZone(compact = false, provider = provider)
+            weather()
+        }
+    } else if (!compact) {
+        Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+            weather()
+            DynamicZone(compact = false, provider = provider)
+        }
+    } else {
+        Column(modifier = modifier) {
+            if (provider != null) DynamicZone(compact = true, provider = provider)
+            // Lines up with the date button's text.
+            Box(modifier = Modifier.padding(start = 12.dp)) { weather() }
+        }
     }
 }
 

@@ -22,6 +22,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import de.mm20.launcher2.searchactions.actions.SearchAction
+import de.mm20.launcher2.searchactions.actions.SearchActionIcon
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import de.mm20.launcher2.ui.R
 import de.mm20.launcher2.ui.component.SearchActionIcon
 import de.mm20.launcher2.ui.modifier.consumeAllScrolling
@@ -45,9 +53,34 @@ fun ColumnScope.SearchBarActions(
             contentPadding = PaddingValues(start = 8.dp, end = 4.dp)
         ) {
             items(actions) {
-                AssistChip(
+                val highlighted = it == highlightedAction
+                if (it.icon == SearchActionIcon.Custom) {
+                    // App and custom-image actions are recognisable by their icon alone.
+                    Surface(
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .size(32.dp)
+                            .semantics { contentDescription = it.label },
+                        shape = AssistChipDefaults.shape,
+                        color = if (highlighted) MaterialTheme.colorScheme.secondaryContainer
+                        else Color.Transparent,
+                        border = BorderStroke(
+                            1.dp,
+                            if (highlighted) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        onClick = { it.start(context) },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            SearchActionIcon(
+                                action = it,
+                                size = 20.dp,
+                            )
+                        }
+                    }
+                } else AssistChip(
                     modifier = Modifier.padding(4.dp),
-                    colors = if (it == highlightedAction) {
+                    colors = if (highlighted) {
                         AssistChipDefaults.assistChipColors(
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -55,7 +88,7 @@ fun ColumnScope.SearchBarActions(
                             trailingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                     } else AssistChipDefaults.assistChipColors(),
-                    border = if (it == highlightedAction) {
+                    border = if (highlighted) {
                         AssistChipDefaults.assistChipBorder(
                             true,
                             borderColor = MaterialTheme.colorScheme.secondary,

@@ -28,8 +28,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onPlaced
-import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
+import androidx.compose.animation.core.animate
+import java.util.UUID
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -40,7 +44,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import de.mm20.launcher2.ui.R
 import de.mm20.launcher2.ui.base.LocalAppWidgetHost
-import de.mm20.launcher2.ui.ktx.animateTo
 import de.mm20.launcher2.ui.launcher.sheets.WidgetPickerSheet
 import de.mm20.launcher2.ui.locals.LocalSnackbarHostState
 import de.mm20.launcher2.widgets.AppWidget
@@ -67,7 +70,28 @@ fun WidgetColumn(
     val widgets by viewModel.widgets.collectAsState()
     val widgetsLoaded by viewModel.isLoaded.collectAsState()
     val editButton by viewModel.editButton.collectAsState()
-    val swapThresholds = remember(widgets) { Array(widgets.size) { floatArrayOf(0f, 0f) } }
+    // Measured heights, keyed by widget id so they survive reordering.
+    val heights = remember { mutableMapOf<UUID, Int>() }
+    // Order shown while dragging (and until the saved order catches up), so a swap and
+    // the matching offset correction land in the same frame.
+    var dragOrder by remember { mutableStateOf<List<UUID>?>(null) }
+    var draggedId by remember { mutableStateOf<UUID?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val spacingPx = with(density) { 8.dp.toPx() }
+    val hysteresisPx = with(density) { 12.dp.toPx() }
+
+    val displayed = remember(widgets, dragOrder) {
+        val order = dragOrder ?: return@remember widgets
+        val byId = widgets.associateBy { it.id }
+        order.mapNotNull { byId[it] } + widgets.filter { it.id !in order }
+    }
+
+    LaunchedEffect(widgets, draggedId) {
+        if (draggedId == null && dragOrder != null && widgets.map { it.id } == dragOrder) {
+            dragOrder = null
+        }
+    }
 
     Column(
         modifier = modifier
@@ -78,17 +102,9 @@ fun WidgetColumn(
             },
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        widgets.forEachIndexed { i, widget ->
+        displayed.forEachIndexed { i, widget ->
             key(widget.id) {
-                var dragOffsetAfterSwap by remember { mutableStateOf<Float?>(null) }
-                val offsetY = remember(widget.id) {
-                    mutableFloatStateOf(dragOffsetAfterSwap ?: 0f)
-                }
-
-                LaunchedEffect(widgets) {
-                    dragOffsetAfterSwap = null
-                }
-
+                val isDragged = draggedId == widget.id
                 val widgetHost = LocalAppWidgetHost.current
                 WidgetItem(
                     widget = widget,
@@ -114,33 +130,42 @@ fun WidgetColumn(
                     onWidgetUpdate = viewModel::updateWidget,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onPlaced {
-                            swapThresholds[i][0] = it.positionInParent().y
-                            swapThresholds[i][1] = it.positionInParent().y + it.size.height
+                        .zIndex(if (isDragged) 1f else 0f)
+                        .onSizeChanged { heights[widget.id] = it.height }
+                        .offset { IntOffset(0, if (isDragged) dragOffset.roundToInt() else 0) },
+                    draggableState = rememberDraggableState { delta ->
+                        if (draggedId != widget.id) {
+                            draggedId = widget.id
+                            dragOffset = 0f
                         }
-                        .offset { IntOffset(0, offsetY.value.toInt()) },
-                    draggableState = rememberDraggableState {
-                        scope.launch {
-                            val newOffset = offsetY.value + it
-                            offsetY.value = newOffset
-                            if (i > 0 && newOffset < (swapThresholds[i - 1][0] - swapThresholds[i - 1][1])) {
-                                if (dragOffsetAfterSwap == null) {
-                                    dragOffsetAfterSwap =
-                                        swapThresholds[i - 1][1] - swapThresholds[i - 1][0] + newOffset
-                                    viewModel.moveUp(i)
-                                }
-                            }
-                            if (i < widgets.lastIndex && newOffset > (swapThresholds[i + 1][1] - swapThresholds[i + 1][0])) {
-                                if (dragOffsetAfterSwap == null) {
-                                    dragOffsetAfterSwap =
-                                        swapThresholds[i + 1][0] - swapThresholds[i + 1][1] + newOffset
-                                    viewModel.moveDown(i)
-                                }
+                        val order = (dragOrder ?: displayed.map { it.id }).toMutableList()
+                        dragOffset += delta
+                        val idx = order.indexOf(widget.id)
+                        if (idx < 0) return@rememberDraggableState
+                        if (idx > 0) {
+                            val step = (heights[order[idx - 1]] ?: 0) + spacingPx
+                            if (dragOffset < -(step / 2f + hysteresisPx)) {
+                                order.add(idx - 1, order.removeAt(idx))
+                                dragOffset += step
                             }
                         }
+                        if (idx < order.lastIndex && order[idx] == widget.id) {
+                            val step = (heights[order[idx + 1]] ?: 0) + spacingPx
+                            if (dragOffset > step / 2f + hysteresisPx) {
+                                order.add(idx + 1, order.removeAt(idx))
+                                dragOffset -= step
+                            }
+                        }
+                        dragOrder = order
                     },
                     onDragStopped = {
-                        scope.launch { offsetY.animateTo(0f) }
+                        val order = dragOrder
+                        if (order != null) viewModel.setOrder(order)
+                        scope.launch {
+                            animate(dragOffset, 0f) { v, _ -> dragOffset = v }
+                            draggedId = null
+                            dragOffset = 0f
+                        }
                     },
                 )
             }

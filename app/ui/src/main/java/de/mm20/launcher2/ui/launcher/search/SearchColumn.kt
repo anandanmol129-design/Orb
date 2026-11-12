@@ -59,6 +59,7 @@ import de.mm20.launcher2.ui.launcher.search.wikipedia.ArticleResults
 import de.mm20.launcher2.ui.launcher.sheets.HiddenItemsSheet
 import de.mm20.launcher2.ui.launcher.sheets.LocalBottomSheetManager
 import de.mm20.launcher2.ui.locals.LocalGridSettings
+import de.mm20.launcher2.ui.launcher.search.common.grid.RowResults
 import de.mm20.launcher2.ui.theme.transparency.transparency
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -256,6 +257,14 @@ fun SearchColumn(
                         selectedIndex = selectedAppIndex,
                         onSelect = { selectedAppIndex = it },
                     )
+                } else if (!isSearchEmpty && expandedCategory != SearchCategory.Apps) {
+                    RowResults(
+                        key = "apps",
+                        items = apps,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? Application)?.key,
+                    )
                 } else if (!isSearchEmpty || allAppsEnabled) {
                     AppResults(
                         apps = apps,
@@ -270,7 +279,13 @@ fun SearchColumn(
 
                 if (!isSearchEmpty) {
 
-                    ShortcutResults(
+                    if (!missingShortcutsPermission && expandedCategory != SearchCategory.Shortcuts) RowResults(
+                        key = "shortcuts",
+                        items = appShortcuts,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? AppShortcut)?.key,
+                    ) else ShortcutResults(
                         shortcuts = appShortcuts,
                         missingPermission = missingShortcutsPermission,
                         onPermissionRequest = {
@@ -303,7 +318,13 @@ fun SearchColumn(
                         reverse = reverse
                     )
 
-                    CalendarResults(
+                    if (!missingCalendarPermission && expandedCategory != SearchCategory.Calendar) RowResults(
+                        key = "calendar",
+                        items = events,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? CalendarEvent)?.key,
+                    ) else CalendarResults(
                         events = events,
                         missingPermission = missingCalendarPermission,
                         onPermissionRequest = {
@@ -322,7 +343,13 @@ fun SearchColumn(
                         }
                     )
 
-                    ContactResults(
+                    if (!missingContactsPermission && expandedCategory != SearchCategory.Contacts) RowResults(
+                        key = "contacts",
+                        items = contacts,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? Contact)?.key,
+                    ) else ContactResults(
                         contacts = contacts,
                         missingPermission = missingContactsPermission,
                         onPermissionRequest = {
@@ -341,7 +368,13 @@ fun SearchColumn(
                         },
                     )
 
-                    LocationResults(
+                    if (!missingLocationPermission && expandedCategory != SearchCategory.Location) RowResults(
+                        key = "locations",
+                        items = locations,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? Location)?.key,
+                    ) else LocationResults(
                         locations = locations,
                         missingPermission = missingLocationPermission,
                         onPermissionRequest = {
@@ -359,21 +392,39 @@ fun SearchColumn(
                             viewModel.expandCategory(SearchCategory.Location)
                         }
                     )
-                    ArticleResults(
+                    if (expandedCategory != SearchCategory.Articles) RowResults(
+                        key = "articles",
+                        items = wikipedia,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? Article)?.key,
+                    ) else ArticleResults(
                         articles = wikipedia,
                         selectedIndex = selectedArticleIndex,
                         onSelect = { selectedArticleIndex = it },
                         highlightedItem = bestMatch as? Article,
                         reverse = reverse,
                     )
-                    WebsiteResults(
+                    if (expandedCategory != SearchCategory.Website) RowResults(
+                        key = "websites",
+                        items = website,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? Website)?.key,
+                    ) else WebsiteResults(
                         websites = website,
                         selectedIndex = selectedWebsiteIndex,
                         onSelect = { selectedWebsiteIndex = it },
                         highlightedItem = bestMatch as? Website,
                         reverse = reverse,
                     )
-                    FileResults(
+                    if (!missingFilesPermission && expandedCategory != SearchCategory.Files) RowResults(
+                        key = "files",
+                        items = files,
+                        columns = columns,
+                        reverse = reverse,
+                        highlightedKey = (bestMatch as? File)?.key,
+                    ) else FileResults(
                         files = files,
                         onPermissionRequest = {
                             viewModel.requestFilesPermission(context as AppCompatActivity)

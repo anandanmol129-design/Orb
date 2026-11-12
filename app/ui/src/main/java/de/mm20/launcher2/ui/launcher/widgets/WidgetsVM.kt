@@ -67,6 +67,14 @@ class WidgetsVM(
         widgetRepository.set(widgets, parentId)
     }
 
+    fun setOrder(ids: List<UUID>) {
+        val current = widgets.value
+        val byId = current.associateBy { it.id }
+        val ordered = ids.mapNotNull { byId[it] } + current.filter { it.id !in ids }
+        if (ordered.map { it.id } == current.map { it.id }) return
+        widgetRepository.set(ordered, parentId)
+    }
+
     fun moveDown(index: Int) {
         val widgets = widgets.value.toMutableList()
         val widget = widgets.removeAt(index)

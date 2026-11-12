@@ -72,6 +72,10 @@ import de.mm20.launcher2.widgets.CalendarWidget
 import de.mm20.launcher2.widgets.MusicWidget
 import de.mm20.launcher2.widgets.NotesWidget
 import de.mm20.launcher2.widgets.WeatherWidget
+import de.mm20.launcher2.widgets.DeviceWidget
+import de.mm20.launcher2.widgets.MonthWidget
+import de.mm20.launcher2.widgets.CountdownWidget
+import de.mm20.launcher2.widgets.ProgressWidget
 import de.mm20.launcher2.widgets.Widget
 import java.util.UUID
 import kotlin.math.roundToInt
@@ -386,6 +390,10 @@ fun WidgetPickerSheet(
                                     MusicWidget.Type -> MusicWidget(id)
                                     AppsWidget.Type -> AppsWidget(id)
                                     NotesWidget.Type -> NotesWidget(id)
+                                    DeviceWidget.Type -> DeviceWidget(id)
+                                    MonthWidget.Type -> MonthWidget(id)
+                                    CountdownWidget.Type -> CountdownWidget(id)
+                                    ProgressWidget.Type -> ProgressWidget(id)
                                     else -> return@clickable
                                 }
                                 onWidgetSelected(widget)
@@ -404,6 +412,10 @@ fun WidgetPickerSheet(
                                         MusicWidget.Type -> R.drawable.music_note_24px
                                         AppsWidget.Type -> R.drawable.apps_24px
                                         NotesWidget.Type -> R.drawable.sticky_note_2_24px
+                                        DeviceWidget.Type -> R.drawable.battery_full_24px
+                                        MonthWidget.Type -> R.drawable.calendar_today_24px
+                                        CountdownWidget.Type -> R.drawable.timer_24px
+                                        ProgressWidget.Type -> R.drawable.schedule_24px
                                         else -> R.drawable.widgets_24px
                                     }
                                 ),

@@ -119,6 +119,10 @@ import de.mm20.launcher2.widgets.CalendarWidget
 import de.mm20.launcher2.widgets.MusicWidget
 import de.mm20.launcher2.widgets.NotesWidget
 import de.mm20.launcher2.widgets.WeatherWidget
+import de.mm20.launcher2.widgets.DeviceWidget
+import de.mm20.launcher2.widgets.MonthWidget
+import de.mm20.launcher2.widgets.CountdownWidget
+import de.mm20.launcher2.widgets.ProgressWidget
 import de.mm20.launcher2.widgets.Widget
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.map
@@ -153,6 +157,10 @@ fun ConfigureWidgetSheet(
                 is AppsWidget -> ConfigureFavoritesWidget(widget, onWidgetUpdated)
                 is MusicWidget -> ConfigureMusicWidget(widget, onWidgetUpdated)
                 is NotesWidget -> ConfigureNotesWidget(widget, onWidgetUpdated)
+                is DeviceWidget -> ConfigureDeviceWidget(widget, onWidgetUpdated)
+                is MonthWidget -> ConfigureMonthWidget(widget, onWidgetUpdated)
+                is CountdownWidget -> ConfigureCountdownWidget(widget, onWidgetUpdated)
+                is ProgressWidget -> ConfigureProgressWidget(widget, onWidgetUpdated)
             }
         }
 
@@ -689,6 +697,10 @@ fun ColumnScope.ConfigureAppWidget(
                     is CalendarWidget -> it.copy(id = widget.id)
                     is AppsWidget -> it.copy(id = widget.id)
                     is NotesWidget -> it.copy(id = widget.id)
+                    is DeviceWidget -> it.copy(id = widget.id)
+                    is MonthWidget -> it.copy(id = widget.id)
+                    is CountdownWidget -> it.copy(id = widget.id)
+                    is ProgressWidget -> it.copy(id = widget.id)
                 }
                 onWidgetUpdated(updatedWidget)
                 replaceWidget = false

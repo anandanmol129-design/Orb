@@ -45,6 +45,14 @@ import de.mm20.launcher2.widgets.AppsWidget
 import de.mm20.launcher2.widgets.MusicWidget
 import de.mm20.launcher2.widgets.NotesWidget
 import de.mm20.launcher2.widgets.WeatherWidget
+import de.mm20.launcher2.widgets.DeviceWidget
+import de.mm20.launcher2.ui.launcher.widgets.device.DeviceWidget
+import de.mm20.launcher2.widgets.MonthWidget
+import de.mm20.launcher2.ui.launcher.widgets.month.MonthWidget
+import de.mm20.launcher2.widgets.CountdownWidget
+import de.mm20.launcher2.ui.launcher.widgets.countdown.CountdownWidget
+import de.mm20.launcher2.widgets.ProgressWidget
+import de.mm20.launcher2.ui.launcher.widgets.progress.ProgressWidget
 import de.mm20.launcher2.widgets.Widget
 
 @Composable
@@ -145,6 +153,22 @@ fun WidgetItem(
                             widget,
                             onWidgetAdd = onWidgetAdd,
                         )
+                    }
+
+                    is DeviceWidget -> {
+                        DeviceWidget(widget)
+                    }
+
+                    is MonthWidget -> {
+                        MonthWidget(widget)
+                    }
+
+                    is CountdownWidget -> {
+                        CountdownWidget(widget, onConfigure = { configure = true })
+                    }
+
+                    is ProgressWidget -> {
+                        ProgressWidget(widget)
                     }
 
                     is AppWidget -> {

@@ -9,6 +9,10 @@ import androidx.core.content.getSystemService
 import de.mm20.launcher2.widgets.CalendarWidget
 import de.mm20.launcher2.widgets.AppsWidget
 import de.mm20.launcher2.widgets.MusicWidget
+import de.mm20.launcher2.widgets.DeviceWidget
+import de.mm20.launcher2.widgets.MonthWidget
+import de.mm20.launcher2.widgets.CountdownWidget
+import de.mm20.launcher2.widgets.ProgressWidget
 import de.mm20.launcher2.widgets.NotesWidget
 import de.mm20.launcher2.widgets.WeatherWidget
 import de.mm20.launcher2.widgets.Widget
@@ -69,6 +73,22 @@ class WidgetsService(
             BuiltInWidgetInfo(
                 type = NotesWidget.Type,
                 label = context.getString(R.string.widget_name_notes),
+            ),
+            BuiltInWidgetInfo(
+                type = DeviceWidget.Type,
+                label = context.getString(R.string.widget_name_device),
+            ),
+            BuiltInWidgetInfo(
+                type = MonthWidget.Type,
+                label = context.getString(R.string.widget_name_month),
+            ),
+            BuiltInWidgetInfo(
+                type = CountdownWidget.Type,
+                label = context.getString(R.string.widget_name_countdown),
+            ),
+            BuiltInWidgetInfo(
+                type = ProgressWidget.Type,
+                label = context.getString(R.string.widget_name_progress),
             ),
         )
     }

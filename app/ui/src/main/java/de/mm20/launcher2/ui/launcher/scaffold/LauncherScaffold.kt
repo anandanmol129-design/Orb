@@ -1575,19 +1575,26 @@ private fun SecondaryPage(
         )
     }
 
-    val composables = remember(config) {
-        components.associateWith {
-            movableContentOf<Modifier, PaddingValues, LauncherScaffoldState> { modifier, insets, state ->
-                it.Component(
-                    modifier = modifier,
-                    insets = insets,
-                    state = state
-                )
-            }
+    fun createContent(it: ScaffoldComponent) =
+        movableContentOf<Modifier, PaddingValues, LauncherScaffoldState> { modifier, insets, state ->
+            it.Component(
+                modifier = modifier,
+                insets = insets,
+                state = state
+            )
         }
+
+    val composables = remember(config) {
+        components.associateWith { createContent(it) }.toMutableMap()
     }
 
     val component = state.currentComponent
+
+    // Pages can be opened without a gesture bound to them (the orb's pie opens widget pages
+    // this way). Those still need to be composed, otherwise the page stays blank.
+    if (component != null && component !in composables) {
+        composables[component] = createContent(component)
+    }
 
     if (component != null) {
 

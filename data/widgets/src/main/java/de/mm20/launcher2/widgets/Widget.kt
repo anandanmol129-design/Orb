@@ -67,6 +67,26 @@ sealed class Widget {
                             ?: NotesWidgetConfig()
                     NotesWidget(entity.id, config)
                 }
+                DeviceWidget.Type -> DeviceWidget(
+                    entity.id,
+                    Json.decodeFromStringOrNull(entity.config?.takeIf { it.isNotBlank() })
+                        ?: DeviceWidgetConfig(),
+                )
+                MonthWidget.Type -> MonthWidget(
+                    entity.id,
+                    Json.decodeFromStringOrNull(entity.config?.takeIf { it.isNotBlank() })
+                        ?: MonthWidgetConfig(),
+                )
+                CountdownWidget.Type -> CountdownWidget(
+                    entity.id,
+                    Json.decodeFromStringOrNull(entity.config?.takeIf { it.isNotBlank() })
+                        ?: CountdownWidgetConfig(),
+                )
+                ProgressWidget.Type -> ProgressWidget(
+                    entity.id,
+                    Json.decodeFromStringOrNull(entity.config?.takeIf { it.isNotBlank() })
+                        ?: ProgressWidgetConfig(),
+                )
                 else -> null
             }
         }

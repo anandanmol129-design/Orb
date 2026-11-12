@@ -48,7 +48,13 @@ interface SearchActionService {
 
     suspend fun importWebsearch(url: String, iconSize: Int): CustomWebsearchActionBuilder?
 
-    suspend fun getSearchActivities(): List<ComponentName>
+    /**
+     * All installed activities that can receive a text query, in order of preference.
+     * Apps that implement ACTION_SEARCH come first; other apps are included when they
+     * accept text through web search, "process text" (text selection menu), geo queries
+     * (maps) or plain text sharing. [SearchActivity.action] tells how to hand them the query.
+     */
+    suspend fun getSearchActivities(): List<SearchActivity>
 
     suspend fun createIcon(uri: Uri, size: Int): String?
 }
@@ -243,20 +249,69 @@ internal class SearchActionServiceImpl(
         return@withContext file.absolutePath
     }
 
-    override suspend fun getSearchActivities(): List<ComponentName> {
+    override suspend fun getSearchActivities(): List<SearchActivity> {
         return withContext(Dispatchers.Default) {
-            val resolveInfos = context.packageManager.queryIntentActivities(
-                Intent(Intent.ACTION_SEARCH).addCategory(Intent.CATEGORY_DEFAULT),
-                PackageManager.GET_META_DATA,
-            )
-            resolveInfos.mapNotNull {
-                if (!it.activityInfo.exported || !it.activityInfo.enabled) return@mapNotNull null
-                if (it.activityInfo.permission != null && context.checkSelfPermission(it.activityInfo.permission) != PackageManager.PERMISSION_GRANTED) {
-                    return@mapNotNull null
+            val pm = context.packageManager
+            val result = mutableListOf<SearchActivity>()
+            val seenComponents = mutableSetOf<ComponentName>()
+            val seenPackages = mutableSetOf<String>()
+
+            fun collect(intent: Intent, action: String, onePerPackage: Boolean) {
+                val resolveInfos = try {
+                    pm.queryIntentActivities(intent, PackageManager.GET_META_DATA)
+                } catch (e: Exception) {
+                    emptyList()
                 }
-                val componentName = ComponentName(it.activityInfo.packageName, it.activityInfo.name)
-                componentName
+                for (it in resolveInfos) {
+                    val info = it.activityInfo ?: continue
+                    if (!info.exported || !info.enabled) continue
+                    if (info.packageName == context.packageName) continue
+                    if (info.permission != null && context.checkSelfPermission(info.permission) != PackageManager.PERMISSION_GRANTED) {
+                        continue
+                    }
+                    if (onePerPackage && info.packageName in seenPackages) continue
+                    val componentName = ComponentName(info.packageName, info.name)
+                    if (!seenComponents.add(componentName)) continue
+                    seenPackages += info.packageName
+                    result += SearchActivity(componentName, action)
+                }
             }
+
+            collect(
+                Intent(Intent.ACTION_SEARCH).addCategory(Intent.CATEGORY_DEFAULT),
+                Intent.ACTION_SEARCH,
+                onePerPackage = false,
+            )
+            collect(
+                Intent(Intent.ACTION_WEB_SEARCH).addCategory(Intent.CATEGORY_DEFAULT),
+                Intent.ACTION_WEB_SEARCH,
+                onePerPackage = true,
+            )
+            collect(
+                Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=search")),
+                Intent.ACTION_VIEW,
+                onePerPackage = true,
+            )
+            collect(
+                Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain"),
+                Intent.ACTION_PROCESS_TEXT,
+                onePerPackage = true,
+            )
+            collect(
+                Intent(Intent.ACTION_SEND).setType("text/plain"),
+                Intent.ACTION_SEND,
+                onePerPackage = true,
+            )
+            result
         }
     }
 }
+
+data class SearchActivity(
+    val componentName: ComponentName,
+    /**
+     * How the query is delivered: [Intent.ACTION_SEARCH], [Intent.ACTION_WEB_SEARCH],
+     * [Intent.ACTION_VIEW] (geo: URI), [Intent.ACTION_PROCESS_TEXT] or [Intent.ACTION_SEND].
+     */
+    val action: String,
+)

@@ -51,11 +51,23 @@ class EditSearchActionSheetVM : ViewModel(), KoinComponent {
     }
 
     fun getSearchableApps(context: Context) = flow {
-        val items = searchActionService.getSearchActivities().map {
+        val pm = context.packageManager
+        val items = searchActionService.getSearchActivities().mapNotNull {
+            val label = try {
+                if (it.action == Intent.ACTION_SEARCH) {
+                    pm.getActivityInfo(it.componentName, 0).loadLabel(pm).toString()
+                } else {
+                    // Activity labels of share / text-selection targets are often
+                    // generic ("Search", "Translate"); the app name is clearer.
+                    pm.getApplicationInfo(it.componentName.packageName, 0).loadLabel(pm).toString()
+                }
+            } catch (e: Exception) {
+                return@mapNotNull null
+            }
             SearchableApp(
-                label = context.packageManager.getActivityInfo(it, 0)
-                    .loadLabel(context.packageManager).toString(),
-                componentName = it
+                label = label,
+                componentName = it.componentName,
+                action = it.action,
             )
         }.sorted()
         emit(items)
@@ -74,6 +86,7 @@ class EditSearchActionSheetVM : ViewModel(), KoinComponent {
             label = app.label,
             baseIntent = Intent().apply {
                 setComponent(app.componentName)
+                setAction(app.action)
             },
             icon = SearchActionIcon.Custom,
             customIcon = null,
@@ -612,6 +625,7 @@ enum class EditSearchActionPage {
 data class SearchableApp(
     val label: String,
     val componentName: ComponentName,
+    val action: String = Intent.ACTION_SEARCH,
 ): Comparable<SearchableApp> {
     override fun compareTo(other: SearchableApp): Int {
         val label1 = label

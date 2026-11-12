@@ -138,15 +138,62 @@ class SearchVM : ViewModel(), KoinComponent {
 
     val selectedAppProfileType = mutableStateOf(Profile.Type.Personal)
 
+    private var launchJob: Job? = null
+
     fun launchBestMatchOrAction(context: Context) {
-        val bestMatch = bestMatch.value
-        if (bestMatch is SavableSearchable) {
-            bestMatch.launch(context, null)
-            favoritesService.reportLaunch(bestMatch)
-            return
-        } else if (bestMatch is SearchAction) {
-            bestMatch.start(context)
-            return
+        // The search flow first re-emits the previous query's results, so the highlighted
+        // best match can lag behind what the user typed. Resolve the app match directly.
+        val query = searchQuery.value
+        if (launchJob?.isActive == true) return
+        launchJob = viewModelScope.launch {
+            // Resolve the best app for the exact query typed, without waiting for the
+            // UI (or any other provider) to catch up.
+            val app = if (query.isNotBlank() && filters.value.apps) {
+                try {
+                    val hiddenKeys = if (!filters.value.hiddenItems) {
+                        searchableRepository.getKeys(maxVisibility = VisibilityLevel.Hidden).first()
+                    } else emptyList()
+                    searchService.search(
+                        query,
+                        filters = SearchFilters(
+                            allowNetwork = false,
+                            hiddenItems = filters.value.hiddenItems,
+                            apps = true,
+                            websites = false,
+                            articles = false,
+                            places = false,
+                            files = false,
+                            shortcuts = false,
+                            contacts = false,
+                            events = false,
+                            tools = false,
+                        ),
+                        initialResults = null,
+                    )
+                        .first { it.apps != null }
+                        .apps
+                        ?.filterNot { hiddenKeys.contains(it.key) }
+                        ?.applyRanking(query)
+                        ?.firstOrNull()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+            val target: Searchable? = app ?: bestMatch.value?.takeIf { it !is Application }
+                ?: searchActionResults.firstOrNull()
+            if (target != null) launchSearchable(context, target)
+        }
+    }
+
+    private fun launchSearchable(context: Context, target: Searchable) {
+        if (target is SavableSearchable) {
+            target.launch(context, null)
+            favoritesService.reportLaunch(target)
+        } else if (target is SearchAction) {
+            target.start(context)
         }
     }
 

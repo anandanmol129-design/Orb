@@ -146,6 +146,26 @@ class ClockWidgetSettings internal constructor(
         }
     }
 
+    /** (width, height) of the built-in clock in dp; null entries mean "automatic". */
+    val size: Flow<Pair<Int?, Int?>>
+        get() = launcherDataStore.data.map { it.clockWidgetWidth to it.clockWidgetHeight }
+            .distinctUntilChanged()
+
+    fun setSize(width: Int?, height: Int?) {
+        launcherDataStore.update {
+            it.copy(clockWidgetWidth = width, clockWidgetHeight = height)
+        }
+    }
+
+    val showWeather
+        get() = launcherDataStore.data.map { it.clockWidgetShowWeather }.distinctUntilChanged()
+
+    fun setShowWeather(enabled: Boolean) {
+        launcherDataStore.update {
+            it.copy(clockWidgetShowWeather = enabled)
+        }
+    }
+
     val useSmartspacer
         get() = launcherDataStore.data.map { it.clockWidgetSmartspacer }.distinctUntilChanged()
 

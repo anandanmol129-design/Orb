@@ -72,6 +72,20 @@ class ClockWidgetSettingsScreenVM : ViewModel(), KoinComponent {
         settings.setUseThemeColor(boolean)
     }
 
+    val size = settings.size
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null to null)
+
+    fun setSize(width: Int?, height: Int?) {
+        settings.setSize(width, height)
+    }
+
+    val showWeather = settings.showWeather
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), true)
+
+    fun setShowWeather(enabled: Boolean) {
+        settings.setShowWeather(enabled)
+    }
+
     val parts = settings.parts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
 

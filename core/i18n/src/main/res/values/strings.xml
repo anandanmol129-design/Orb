@@ -657,6 +657,10 @@
     <string name="preference_clockwidget_layout_vertical">Default</string>
     <string name="preference_clockwidget_layout_horizontal">Compact</string>
     <string name="preference_clock_widget_show_seconds">Show seconds</string>
+    <string name="preference_clock_widget_show_weather">Show weather</string>
+    <string name="preference_clock_widget_show_weather_summary">Current temperature next to the clock</string>
+    <string name="preference_clock_widget_resize">Resize clock</string>
+    <string name="preference_clock_widget_reset_size">Reset size</string>
     <string name="preference_clock_widget_monospaced">Monospaced digits</string>
     <string name="preference_clock_widget_time_format">Time format</string>
     <string name="preference_clock_widget_time_format_24h">24-hour</string>

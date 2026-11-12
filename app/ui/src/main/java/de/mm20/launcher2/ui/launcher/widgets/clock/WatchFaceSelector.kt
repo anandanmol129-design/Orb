@@ -63,6 +63,10 @@ import androidx.compose.ui.unit.coerceAtMost
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.BoxWithConstraints
 import de.mm20.launcher2.ktx.isAtLeastApiLevel
 import de.mm20.launcher2.preferences.ClockWidgetColors
 import de.mm20.launcher2.preferences.ClockWidgetStyle
@@ -87,11 +91,15 @@ fun WatchFaceSelector(
     themeColors: Boolean,
     selected: ClockWidgetStyle?,
     onSelect: (ClockWidgetStyle) -> Unit,
+    clockWidth: Int? = null,
+    clockHeight: Int? = null,
+    onResize: (width: Int?, height: Int?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
 
     var showWidgetPicker by rememberSaveable { mutableStateOf(false) }
     var resizeCustomWidget by remember { mutableStateOf(false) }
+    var resizeClock by remember { mutableStateOf(false) }
 
     val lightBackground =
         colors == ClockWidgetColors.Dark || colors == ClockWidgetColors.Auto && LocalPreferDarkContentOverWallpaper.current
@@ -107,7 +115,21 @@ fun WatchFaceSelector(
         },
         shape = MaterialTheme.shapes.medium,
     ) {
-        AnimatedContent(resizeCustomWidget) { resize ->
+        AnimatedContent(resizeCustomWidget to resizeClock) { (resize, resizeBuiltin) ->
+            if (resizeBuiltin && selected != null && selected !is ClockWidgetStyle.Custom && selected !is ClockWidgetStyle.Empty) {
+                val darkColors =
+                    colors == ClockWidgetColors.Auto && LocalPreferDarkContentOverWallpaper.current || colors == ClockWidgetColors.Dark
+                ResizeBuiltinClock(
+                    style = selected,
+                    compact = compact,
+                    darkColors = darkColors,
+                    width = clockWidth,
+                    height = clockHeight,
+                    onResize = onResize,
+                    onExit = { resizeClock = false },
+                )
+                return@AnimatedContent
+            }
             if (resize && selected is ClockWidgetStyle.Custom) {
                 ResizeCustomWidget(
                     style = selected,
@@ -138,6 +160,26 @@ fun WatchFaceSelector(
                 val scope = rememberCoroutineScope()
 
                 Box {
+                    androidx.compose.animation.AnimatedVisibility(
+                        selected != null &&
+                                selected !is ClockWidgetStyle.Custom &&
+                                selected !is ClockWidgetStyle.Empty,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .zIndex(1f),
+                        enter = scaleIn(),
+                        exit = scaleOut(),
+                    ) {
+                        IconButton(
+                            onClick = { resizeClock = true },
+                            modifier = Modifier.padding(4.dp)
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.resize_24px),
+                                stringResource(R.string.preference_clock_widget_resize),
+                            )
+                        }
+                    }
                     androidx.compose.animation.AnimatedVisibility(
                         selected is ClockWidgetStyle.Digital1 ||
                                 selected is ClockWidgetStyle.Analog ||
@@ -369,11 +411,13 @@ fun WatchFaceSelector(
                                     contentAlignment = Alignment.TopCenter,
                                 ) {
 
-                                    if (currentPageStyle.javaClass == selected?.javaClass) {
-                                        Clock(selected, compact, darkColors)
-                                    } else {
-                                        Clock(currentPageStyle, compact, darkColors)
-                                    }
+                                    ClockFace(
+                                        style = if (currentPageStyle.javaClass == selected?.javaClass) selected else currentPageStyle,
+                                        compact = compact,
+                                        darkColors = darkColors,
+                                        width = clockWidth,
+                                        height = clockHeight,
+                                    )
                                 }
                             }
                         }
@@ -516,6 +560,115 @@ fun getClockStyleName(context: Context, style: ClockWidgetStyle): String {
         is ClockWidgetStyle.Empty -> context.getString(R.string.clock_style_empty)
         is ClockWidgetStyle.Custom -> context.getString(R.string.clock_style_custom)
         else -> ""
+    }
+}
+
+@Composable
+private fun ResizeBuiltinClock(
+    style: ClockWidgetStyle,
+    compact: Boolean,
+    darkColors: Boolean,
+    width: Int?,
+    height: Int?,
+    onResize: (width: Int?, height: Int?) -> Unit,
+    onExit: () -> Unit,
+) {
+    // Until the user drags a handle, an automatic size follows the preview's live measured size
+    // (it changes e.g. when the weather loads), so the handles always frame what is shown.
+    var sized by remember { mutableStateOf(width != null || height != null) }
+    var resizeWidth by remember { mutableStateOf(width?.dp ?: Dp.Unspecified) }
+    var resizeHeight by remember { mutableStateOf(height?.dp ?: Dp.Unspecified) }
+    val density = LocalDensity.current
+
+    CompositionLocalProvider(
+        LocalContentColor provides if (darkColors) Color(0, 0, 0, 180) else Color.White,
+    ) {
+        Column {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp, bottom = 72.dp),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                val availableWidth = maxWidth
+                Box(contentAlignment = Alignment.Center) {
+                    ClockFace(
+                        style = style,
+                        compact = compact,
+                        darkColors = darkColors,
+                        width = if (sized) resizeWidth.takeIf { it.isSpecified }?.value?.roundToInt() else null,
+                        height = if (sized) resizeHeight.takeIf { it.isSpecified }?.value?.roundToInt() else null,
+                        modifier = Modifier
+                            .onSizeChanged {
+                                with(density) {
+                                    if (!sized || resizeWidth.isUnspecified) resizeWidth = it.width.toDp()
+                                    if (!sized || resizeHeight.isUnspecified) resizeHeight = it.height.toDp()
+                                }
+                            }
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    awaitFirstDown(pass = PointerEventPass.Initial).consume()
+                                }
+                            },
+                    )
+                    if (resizeWidth.isSpecified && resizeHeight.isSpecified) {
+                        Box(modifier = Modifier.matchParentSize()) {
+                            DragResizeHandle(
+                                alignment = Alignment.Center,
+                                width = resizeWidth,
+                                height = resizeHeight,
+                                minWidth = 48.dp,
+                                minHeight = 32.dp,
+                                maxWidth = availableWidth,
+                                maxHeight = 480.dp,
+                                onResize = { w, h ->
+                                    sized = true
+                                    if (w.isSpecified) resizeWidth = w
+                                    if (h.isSpecified) resizeHeight = h
+                                },
+                                onResizeStopped = {
+                                    onResize(
+                                        resizeWidth.value.roundToInt(),
+                                        resizeHeight.value.roundToInt(),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = {
+                        sized = false
+                        resizeWidth = Dp.Unspecified
+                        resizeHeight = Dp.Unspecified
+                        onResize(null, null)
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = LocalContentColor.current,
+                    ),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.restart_alt_24px),
+                        null,
+                        modifier = Modifier
+                            .padding(end = ButtonDefaults.IconSpacing)
+                            .size(ButtonDefaults.IconSize),
+                    )
+                    Text(stringResource(R.string.preference_clock_widget_reset_size))
+                }
+                Box(modifier = Modifier.weight(1f))
+                FilledIconButton(onClick = onExit) {
+                    Icon(painterResource(R.drawable.check_24px), null)
+                }
+            }
+        }
     }
 }
 

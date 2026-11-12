@@ -84,6 +84,7 @@ fun ClockWidget(
     val compact by viewModel.compactLayout.collectAsState()
     val clockStyle by viewModel.clockStyle.collectAsState()
     val color by viewModel.color.collectAsState()
+    val size by viewModel.size.collectAsState()
     val time = LocalTime.current
 
     val darkColors =
@@ -168,7 +169,13 @@ fun ClockWidget(
                                         viewModel.launchClockApp(context)
                                     }
                                 ) {
-                                    Clock(clockStyle, false, darkColors)
+                                    ClockFace(
+                                        style = clockStyle,
+                                        compact = false,
+                                        darkColors = darkColors,
+                                        width = size.first,
+                                        height = size.second,
+                                    )
                                 }
 
                                 if (partProvider != null) {
@@ -215,7 +222,13 @@ fun ClockWidget(
                                         viewModel.launchClockApp(context)
                                     }
                                 ) {
-                                    Clock(clockStyle, true, darkColors)
+                                    ClockFace(
+                                        style = clockStyle,
+                                        compact = true,
+                                        darkColors = darkColors,
+                                        width = size.first,
+                                        height = size.second,
+                                    )
                                 }
                             }
                         }
@@ -376,6 +389,8 @@ fun ConfigureClockWidgetSheet(
         val useAccentColor by viewModel.useThemeColor.collectAsState()
         val parts by viewModel.parts.collectAsState()
         val smartspacer by viewModel.useSmartspacer.collectAsState()
+        val clockSize by viewModel.size.collectAsState()
+        val showWeather by viewModel.showWeather.collectAsState()
 
         Column(
             modifier = Modifier
@@ -435,7 +450,11 @@ fun ConfigureClockWidgetSheet(
                     selected = style,
                     onSelect = {
                         viewModel.setClockStyle(it)
-                    })
+                    },
+                    clockWidth = clockSize.first,
+                    clockHeight = clockSize.second,
+                    onResize = { w, h -> viewModel.setSize(w, h) },
+                )
             }
 
             Row(
@@ -496,6 +515,17 @@ fun ConfigureClockWidgetSheet(
                             viewModel.setUseThemeColor(it)
                         }
                     )
+                    AnimatedVisibility(style !is ClockWidgetStyle.Custom && style !is ClockWidgetStyle.Empty) {
+                        SwitchPreference(
+                            title = stringResource(R.string.preference_clock_widget_show_weather),
+                            summary = stringResource(R.string.preference_clock_widget_show_weather_summary),
+                            icon = R.drawable.light_mode_24px,
+                            value = showWeather,
+                            onValueChanged = {
+                                viewModel.setShowWeather(it)
+                            }
+                        )
+                    }
                     AnimatedVisibility(compact == false && style !is ClockWidgetStyle.Custom) {
                         SwitchPreference(
                             title = stringResource(R.string.preference_clock_widget_show_seconds),

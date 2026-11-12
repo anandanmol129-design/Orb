@@ -66,6 +66,9 @@ class ClockWidgetVM : ViewModel(), KoinComponent {
     val color = settings.color
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
 
+    val size = settings.size
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null to null)
+
     val dockProvider = settings.dock
         .map { if (it) FavoritesPartProvider() else null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)

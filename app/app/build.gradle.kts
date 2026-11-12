@@ -147,6 +147,10 @@ dependencies {
     implementation(project(":services:tags"))
     implementation(project(":data:unitconverter"))
     implementation(project(":app:ui"))
+
+    // Subject cutout for the wallpaper depth effect (Play services, so not in the F-Droid build).
+    "defaultImplementation"("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
+    "defaultImplementation"("com.google.android.gms:play-services-base:18.11.1")
     implementation(project(":data:weather"))
     implementation(project(":data:websites"))
     implementation(project(":data:widgets"))

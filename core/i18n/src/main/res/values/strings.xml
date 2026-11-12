@@ -661,6 +661,14 @@
     <string name="preference_clock_widget_show_weather_summary">Current temperature next to the clock</string>
     <string name="preference_clock_widget_resize">Resize clock</string>
     <string name="preference_clock_widget_reset_size">Reset size</string>
+    <string name="clock_weather_allow_location">Weather</string>
+    <string name="preference_wallpaper_depth_effect">Depth effect</string>
+    <string name="preference_wallpaper_depth_effect_summary">Draw a photo as the wallpaper and put its subject in front of the clock</string>
+    <string name="preference_wallpaper_depth_photo">Depth photo</string>
+    <string name="preference_wallpaper_depth_photo_summary">Choose the photo used for the depth effect</string>
+    <string name="preference_wallpaper_depth_processing">Finding the subject…</string>
+    <string name="wallpaper_depth_error">Couldn\'t find a subject in this photo</string>
+    <string name="wallpaper_depth_downloading">Downloading the subject detector, try again in a minute</string>
     <string name="preference_clock_widget_monospaced">Monospaced digits</string>
     <string name="preference_clock_widget_time_format">Time format</string>
     <string name="preference_clock_widget_time_format_24h">24-hour</string>

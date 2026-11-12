@@ -1,5 +1,7 @@
 package de.mm20.launcher2.ui.launcher.widgets.clock.clocks
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -101,18 +103,29 @@ fun ParticleClock(
 
     val pitch = if (compact) 4.3.dp else 6.5.dp
 
+    // In 12h mode the leading hour digit is hidden, leaving an empty slot on the left. Drop that
+    // slot from the canvas and shift the drawing left by it, so the visible digits are centered
+    // and nothing pads the clock (animated for 9 → 10 o'clock).
+    val leadingBlank = codes[0] == PARTICLE_GLYPH_BLANK
+    val hiddenColumns by animateFloatAsState(
+        targetValue = if (leadingBlank) (PARTICLE_GLYPH_COLS + 1).toFloat() else 0f,
+        animationSpec = tween(800),
+        label = "particleHiddenColumns",
+    )
+
     Canvas(
         modifier = Modifier
             .padding(
                 top = if (!compact) 16.dp else 0.dp,
                 bottom = if (!compact) 16.dp else 0.dp,
             )
-            .size(width = pitch * sim.columns.toFloat(), height = pitch * PARTICLE_GLYPH_ROWS.toFloat())
+            .size(width = pitch * (sim.columns - hiddenColumns), height = pitch * PARTICLE_GLYPH_ROWS.toFloat())
     ) {
         // Reading the tick here invalidates only the draw phase each frame.
         @Suppress("UNUSED_VARIABLE")
         val tick = frameTick
         val p = pitch.toPx()
+        val shiftX = -hiddenColumns * p
         val radius = p * 0.27f
         val xs = sim.x
         val ys = sim.y
@@ -123,7 +136,7 @@ fun ParticleClock(
             drawCircle(
                 color = color,
                 radius = radius,
-                center = Offset(xs[i] * p, ys[i] * p),
+                center = Offset(xs[i] * p + shiftX, ys[i] * p),
                 alpha = if (a > 1f) 1f else a,
             )
         }

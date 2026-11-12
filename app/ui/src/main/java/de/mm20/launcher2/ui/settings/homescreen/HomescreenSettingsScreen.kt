@@ -211,6 +211,7 @@ fun HomescreenSettingsScreen() {
                         viewModel.setWallpaperType(it)
                     },
                 )
+                DepthEffectPreferences(wallpaperType = wallpaperType)
                 Preference(
                     title = stringResource(R.string.wallpaper),
                     summary = stringResource(R.string.preference_wallpaper_summary),

@@ -68,6 +68,7 @@ import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.ParticleClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SunArcClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SegmentClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.PartProvider
+import de.mm20.launcher2.ui.launcher.wallpaper.depth.depthForeground
 import de.mm20.launcher2.ui.locals.LocalPreferDarkContentOverWallpaper
 import de.mm20.launcher2.ui.locals.LocalTimeFormat
 import de.mm20.launcher2.ui.settings.clockwidget.ClockWidgetSettingsScreenVM
@@ -150,6 +151,7 @@ fun ClockWidget(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .depthForeground()
                         .padding(horizontal = if (compact == true) 0.dp else 24.dp),
                     contentAlignment = Alignment.TopCenter,
                 ) {

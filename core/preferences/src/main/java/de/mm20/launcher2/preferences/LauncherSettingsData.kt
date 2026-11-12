@@ -32,6 +32,8 @@ data class LauncherSettingsData internal constructor(
     val wallpaperBlur: Boolean = true,
     val wallpaperBlurRadius: Int = 32,
     val wallpaperType: WallpaperType = WallpaperType.Aurora,
+    /** With [WallpaperType.System]: draw the user's depth photo and put its subject in front of the clock. */
+    val wallpaperDepthEffect: Boolean = false,
 
     val mediaAllowList: Set<String> = emptySet(),
     val mediaDenyList: Set<String> = emptySet(),

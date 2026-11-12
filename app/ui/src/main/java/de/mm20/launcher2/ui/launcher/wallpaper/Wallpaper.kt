@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import de.mm20.launcher2.preferences.WallpaperType
+import de.mm20.launcher2.ui.launcher.wallpaper.depth.DepthWallpaperBackground
+import de.mm20.launcher2.ui.launcher.wallpaper.depth.rememberActiveDepthImages
 
 /**
  * Renders the launcher's active wallpaper. Wallpapers other than the system wallpaper are
@@ -21,7 +23,12 @@ fun LauncherWallpaper(
     val active = if (type == WallpaperType.Random) rememberRandomWallpaperType() else type
     if (active != WallpaperType.System) PollMusicPlaying()
     when (active) {
-        WallpaperType.System, WallpaperType.Random -> Unit
+        WallpaperType.System -> {
+            // Depth effect: draw the user's photo ourselves so its subject cutout (drawn over
+            // the clock) lines up exactly.
+            rememberActiveDepthImages()?.let { DepthWallpaperBackground(it, modifier) }
+        }
+        WallpaperType.Random -> Unit
         WallpaperType.Water -> WaterWallpaper(modifier)
         WallpaperType.Prism -> PrismWallpaper(modifier)
         WallpaperType.SolarSystem -> SolarSystemWallpaper(modifier)

@@ -150,6 +150,15 @@ class UiSettings internal constructor(
         }
     }
 
+    val wallpaperDepthEffect
+        get() = launcherDataStore.data.map { it.wallpaperDepthEffect }.distinctUntilChanged()
+
+    fun setWallpaperDepthEffect(enabled: Boolean) {
+        launcherDataStore.update {
+            it.copy(wallpaperDepthEffect = enabled)
+        }
+    }
+
     val colorScheme
         get() = launcherDataStore.data.map {
             it.uiColorScheme

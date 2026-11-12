@@ -101,6 +101,7 @@ class LauncherApplication : Application(), ImageLoaderFactory {
                     i18nDataModule,
                     feedModule,
                     voiceModule,
+                    flavorModule,
                 )
             )
         }

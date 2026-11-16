@@ -122,6 +122,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -617,6 +618,7 @@ internal class LauncherScaffoldState(
     suspend fun onDragStopped(velocity: Velocity, disallowPageChange: Boolean = false) {
         isDragged = false
         if (isLocked || currentZOffset > 0f) return
+        val generation = transitionGeneration
         val velocity = when {
             !isAtTop && !isAtBottom -> velocity.copy(y = 0f)
             !isAtTop -> velocity.copy(y = velocity.y.coerceAtMost(0f))
@@ -694,7 +696,9 @@ internal class LauncherScaffoldState(
             )
         }
 
-        if (!isSettledOnSecondaryPage) setCurrentGesture(null)
+        // Only clear the gesture if nothing else (e.g. an orb tap opening search) has started a
+        // page transition while this settle animation was running.
+        if (!isSettledOnSecondaryPage && generation == transitionGeneration) setCurrentGesture(null)
     }
 
     suspend fun onOrbGesture(gesture: Gesture) {
@@ -873,11 +877,20 @@ internal class LauncherScaffoldState(
         }
     }
 
+    /**
+     * Bumped by every page transition. A transition whose animation was overtaken by a newer
+     * one must not run its end-of-transition bookkeeping, or it undoes the newer one: e.g. a
+     * search that was still closing would clear the gesture of the search an orb tap had just
+     * reopened, leaving the scaffold zoomed into an empty page (tap, buzz, nothing).
+     */
+    private var transitionGeneration = 0
+
     private suspend fun transitionToPage(
         targetPage: ScaffoldPage,
         component: ScaffoldComponent,
         animate: suspend () -> Unit,
     ) = withContext(NonCancellable) {
+        val generation = ++transitionGeneration
         if (targetPage == ScaffoldPage.Secondary && component is WidgetsComponent) {
             // Give the widgets a moment to lay out so the page does not pop in half-built,
             // but never hold the transition hostage to a slow widget.
@@ -896,7 +909,15 @@ internal class LauncherScaffoldState(
             }
         }
 
-        animate()
+        // Run the animation in a cancellable child scope. Under NonCancellable the animatable
+        // can't cancel it, so a newer transition would wait for this one to finish first.
+        try {
+            coroutineScope { animate() }
+        } catch (_: CancellationException) {
+            // Interrupted by another animation; the bookkeeping below still decides what's shown.
+        }
+
+        if (generation != transitionGeneration) return@withContext
 
         when (targetPage) {
             ScaffoldPage.Secondary -> {

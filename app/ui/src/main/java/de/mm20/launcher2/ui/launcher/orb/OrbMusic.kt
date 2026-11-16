@@ -11,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -110,14 +111,22 @@ fun rememberOrbMedia(): State<OrbMedia> {
             )
         }.collect { value = it }
     }
+    val playing = session.value.playing || musicActive.value
+    // Art shows only while something plays. Losing it waits a moment, so a track change or a
+    // brief buffering pause doesn't flash the plain body.
+    val showArt by produceState(playing, playing) {
+        if (!playing) delay(ART_HIDE_DELAY_MS)
+        value = playing
+    }
     return remember {
         derivedStateOf {
             val s = session.value
             val a = art.value
+            val visible = s.hasSession && showArt
             s.copy(
                 playing = s.playing || musicActive.value,
-                art = if (s.hasSession) a?.first else null,
-                accent = if (s.hasSession) a?.second else null,
+                art = if (visible) a?.first else null,
+                accent = if (visible) a?.second else null,
             )
         }
     }
@@ -239,3 +248,4 @@ fun rememberOrbAudio(enabled: Boolean): OrbAudio {
 }
 
 private const val MUSIC_POLL_MS = 250L
+private const val ART_HIDE_DELAY_MS = 1500L

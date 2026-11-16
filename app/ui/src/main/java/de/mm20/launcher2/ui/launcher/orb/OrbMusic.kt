@@ -138,13 +138,17 @@ class OrbAudio {
     var live = false
         internal set
 
-    // Per-band running peak for auto gain, so quiet and loud tracks both fill the edge.
-    private val peaks = FloatArray(BANDS) { 0.25f }
+    // One running peak shared by all bands (auto gain that keeps the spectrum's shape), and a
+    // short per-band average to detect hits.
+    private var peak = 0.3f
+    private val avg = FloatArray(BANDS)
+    private val mags = FloatArray(BANDS)
     private var edges: IntArray? = null
 
     internal fun onFft(fft: ByteArray) {
         val bins = fft.size / 2
         val e = edges?.takeIf { it.size == BANDS + 1 } ?: bandEdges(bins).also { edges = it }
+        var frameMax = 0f
         for (b in 0 until BANDS) {
             var sum = 0f
             val from = e[b]
@@ -154,11 +158,21 @@ class OrbAudio {
                 val im = fft[2 * k + 1].toFloat()
                 sum += hypot(re, im)
             }
-            val mag = ln(1f + sum / (to - from)) / LN_MAX
-            // Peak decays slowly; level is magnitude relative to it, with a floor so silence
-            // stays flat instead of amplifying noise.
-            peaks[b] = max(mag, peaks[b] * 0.995f).coerceAtLeast(0.18f)
-            levels[b] = ((mag / peaks[b]) - 0.15f).coerceIn(0f, 1f).pow(1.4f)
+            // Highs carry less energy than lows; tilt them up a little so the top of the ring
+            // still moves.
+            val mag = ln(1f + sum / (to - from)) / LN_MAX * (1f + 0.5f * b / BANDS)
+            mags[b] = mag
+            if (mag > frameMax) frameMax = mag
+        }
+        peak = max(frameMax, peak * 0.996f).coerceAtLeast(0.2f)
+        for (b in 0 until BANDS) {
+            val mag = mags[b]
+            // Steady loudness lights a column part way, by how strong the band is against the
+            // loudest; a hit (the band jumping above its recent average) shoots it out fully.
+            val shape = (((mag / peak) - 0.45f) / 0.55f).coerceIn(0f, 1f).pow(1.5f)
+            val hit = (mag - avg[b]).coerceAtLeast(0f) / peak
+            avg[b] += (mag - avg[b]) * 0.15f
+            levels[b] = (shape * 0.6f + hit * 4f).coerceIn(0f, 1f)
         }
     }
 

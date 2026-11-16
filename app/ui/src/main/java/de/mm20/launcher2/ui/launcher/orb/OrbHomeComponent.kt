@@ -2,11 +2,13 @@ package de.mm20.launcher2.ui.launcher.orb
 
 import android.Manifest
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.os.Process
 import androidx.activity.compose.BackHandler
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -56,6 +58,8 @@ import de.mm20.launcher2.applications.AppRepository
 import de.mm20.launcher2.appshortcuts.AppShortcutRepository
 import de.mm20.launcher2.ktx.sendWithBackgroundPermission
 import de.mm20.launcher2.music.MusicService
+import de.mm20.launcher2.permissions.PermissionGroup
+import de.mm20.launcher2.permissions.PermissionsManager
 import de.mm20.launcher2.orb.MediaRingAction
 import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.orb.OrbFill
@@ -136,6 +140,10 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         val amplitude by voiceController.amplitude.collectAsState()
         val transcript by voiceController.transcript.collectAsState()
         val musicService: MusicService = koinInject()
+        val permissionsManager: PermissionsManager = koinInject()
+        val hasMediaAccess by remember {
+            permissionsManager.hasPermission(PermissionGroup.Notifications)
+        }.collectAsState(initial = true)
         val media by rememberOrbMedia()
 
         // Mirror the assistant's state for the wallpaper layer, which sits outside this tree.
@@ -189,6 +197,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var rewindSeconds by remember { mutableIntStateOf(pieRepository.mediaRewindSeconds()) }
         var forwardSeconds by remember { mutableIntStateOf(pieRepository.mediaForwardSeconds()) }
         var mediaSelected by remember { mutableStateOf<MediaRingSlot?>(null) }
+        var mediaPromptDismissed by remember { mutableStateOf(pieRepository.mediaAccessPromptDismissed()) }
         val audio = rememberOrbAudio(enabled = media.playing && !sleeping)
         val showMediaRing = mediaRingEnabled && media.hasSession &&
             mediaSlots.values.any { it != MediaRingAction.None }
@@ -738,6 +747,34 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     }
                 }
 
+                // Music is playing but the launcher can't see what: ask for notification access,
+                // which cover art, track info and the media ring need.
+                if (media.playing && !hasMediaAccess && !mediaPromptDismissed &&
+                    orbState == OrbState.Idle
+                ) {
+                    MediaAccessPrompt(
+                        onAllow = {
+                            context.findAppCompatActivity()?.let {
+                                permissionsManager.requestPermission(it, PermissionGroup.Notifications)
+                            }
+                        },
+                        onDismiss = {
+                            mediaPromptDismissed = true
+                            pieRepository.saveMediaAccessPromptDismissed(true)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset {
+                                IntOffset(
+                                    0,
+                                    (center.y + sphereRadius * 1.8f + with(density) {
+                                        8.dp.toPx()
+                                    }).roundToInt(),
+                                )
+                            },
+                    )
+                }
+
                 if (orbState != OrbState.Idle && orbState != OrbState.Pie && orbState != OrbState.Sleep) {
                     OrbWavePill(
                         amplitude = amplitude,
@@ -884,6 +921,15 @@ internal object OrbHomeComponent : ScaffoldComponent() {
     /** Maps a stored widgets-target name to its page, falling back to the default page. */
     private fun widgetsTargetOf(name: String?): WidgetScreenTarget =
         WidgetScreenTarget.entries.firstOrNull { it.name == name } ?: WidgetScreenTarget.Default
+}
+
+private fun Context.findAppCompatActivity(): AppCompatActivity? {
+    var c: Context? = this
+    while (c is ContextWrapper) {
+        if (c is AppCompatActivity) return c
+        c = c.baseContext
+    }
+    return null
 }
 
 /** Generates the stable id used to reference an installed app from the pie. */

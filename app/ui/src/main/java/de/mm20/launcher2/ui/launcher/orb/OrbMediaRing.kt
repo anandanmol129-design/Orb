@@ -1,6 +1,13 @@
 package de.mm20.launcher2.ui.launcher.orb
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -168,4 +175,50 @@ fun mediaRingSelection(
         }
     }
     return best
+}
+
+/**
+ * Shown under the orb while music plays but the launcher cannot see media sessions: asks for
+ * notification access, which cover art, track info and the media ring all need.
+ */
+@Composable
+fun MediaAccessPrompt(
+    onAllow: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f))
+            .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.music_note_24px),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "Show cover art",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        TextButton(onClick = onAllow) { Text("Allow") }
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.close_24px),
+                contentDescription = "Not now",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
 }

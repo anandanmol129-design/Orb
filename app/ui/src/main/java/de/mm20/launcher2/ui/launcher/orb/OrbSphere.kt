@@ -72,8 +72,8 @@ import kotlinx.coroutines.launch
  *
  * While media plays ([playing]) the orb becomes a music visualizer: its edge ripples with the
  * live spectrum of whatever is playing ([audio]; a synthetic groove when that is unavailable),
- * the body thumps on the bass, a filled body wears the track's [coverArt] and an outline body
- * takes the art's [accent] colour.
+ * while the body itself holds still; the body (filled or outline) wears the track's
+ * [coverArt], rimmed in the art's [accent] colour.
  *
  * It also behaves like a small pet. It has a mouth that smiles, gapes, frowns and yawns. A
  * finger resting on it ([pressed]) squishes it like jelly; every tap ([pokeCount]) and every
@@ -297,7 +297,7 @@ fun OrbSphere(
     // 0..1 across the antic and is only sampled while drawing.
     val act = remember { Animatable(0f) }
     var actKind by remember { mutableIntStateOf(ActNone) }
-    val calm = state == OrbState.Idle && !pressed
+    val calm = state == OrbState.Idle && !pressed && !playing
     LaunchedEffect(calm) {
         actKind = ActNone
         act.snapTo(0f)
@@ -388,15 +388,12 @@ fun OrbSphere(
                     }
                 }
                 val cur = levels[i]
-                levels[i] = cur + (target - cur) * if (target > cur) 0.55f else 0.16f
+                levels[i] = cur + (target - cur) * if (target > cur) 0.7f else 0.2f
                 if (levels[i] > 0.002f) any = true
             }
             frameTick.longValue = now
             if (!playing && !any) break
         }
-    }
-    val bass: () -> Float = {
-        (levels[0] + levels[1] + levels[2] + levels[3]) * 0.25f
     }
     val waveMeasure = remember { PathMeasure() }
 
@@ -404,7 +401,7 @@ fun OrbSphere(
     var shownArt by remember { mutableStateOf<ImageBitmap?>(null) }
     if (coverArt != null && coverArt !== shownArt) shownArt = coverArt
     val artShow by animateFloatAsState(
-        targetValue = if (coverArt != null && fill == OrbFill.Filled && state != OrbState.Sleep) 1f else 0f,
+        targetValue = if (coverArt != null && state != OrbState.Sleep) 1f else 0f,
         animationSpec = tween(500),
         label = "art",
     )
@@ -420,17 +417,16 @@ fun OrbSphere(
 
         val isSleep = state == OrbState.Sleep
 
-        // How hard the current beat hits, sampled at draw time: the live bass when the spectrum
-        // is available, otherwise the fixed groove.
+        // Redraw every visualizer frame. The body itself keeps still to music; only the dots move.
         frameTick.longValue
-        val beat = if (audio?.live == true) bass() * groove else thump * groove
+        // While music plays the body settles down so the dot ring carries all the motion.
+        val still = 1f - 0.85f * groove
         val waveAmt = if (isSleep) 0f else vis
         val ink = lerp(baseInk, Color.White, artShow)
 
-        // Breathing, the success pop and the beat scale the whole body. A sleeping orb stays at
-        // rest.
-        val breathe = 1f + 0.04f * sin(breath)
-        val r = if (isSleep) baseR * 0.97f else baseR * breathe * pop.value * (1f + 0.09f * beat)
+        // Breathing and the success pop scale the whole body. A sleeping orb stays at rest.
+        val breathe = 1f + 0.04f * sin(breath) * still
+        val r = if (isSleep) baseR * 0.97f else baseR * breathe * pop.value
 
         // Body language: positional drift, tilt and squash-stretch per state.
         var mx = 0f
@@ -439,14 +435,12 @@ fun OrbSphere(
         var sx = 1f
         var sy = 1f
         when (state) {
-            // Lazy float around the rest position, leaning with the drift. With music playing,
-            // the body also stretches and thumps up on each beat like a soft mass keeping time.
+            // Lazy float around the rest position, leaning with the drift; held almost still
+            // while music plays.
             OrbState.Idle -> {
-                mx = sin(phase * 0.7f) * r * 0.05f
-                my = cos(phase * 0.5f) * r * 0.04f - beat * r * 0.05f
-                tiltDeg = sin(phase * 0.5f + 1.3f) * 3.5f
-                sy = 1f + 0.05f * beat
-                sx = 1f - 0.035f * beat
+                mx = sin(phase * 0.7f) * r * 0.05f * still
+                my = cos(phase * 0.5f) * r * 0.04f * still
+                tiltDeg = sin(phase * 0.5f + 1.3f) * 3.5f * still
             }
             // Eager bob: stretched while lifted, squashed while settled.
             OrbState.Listening -> {
@@ -590,7 +584,6 @@ fun OrbSphere(
                     }
                     fill == OrbFill.Outline -> {
                         // Hollow body: just the edge, so the wallpaper shows through the centre.
-                        // While music plays it takes the cover art's colour.
                         drawPath(
                             path = bodyPath,
                             color = rim,
@@ -612,47 +605,47 @@ fun OrbSphere(
                             color = Color(0xFFD9DAE1),
                             style = Stroke(width = r * 0.03f),
                         )
-                        // Cover art, centre-cropped into the body, with a soft scrim so the
-                        // face stays readable on any artwork.
-                        val art = shownArt
-                        if (art != null && artShow > 0.01f) {
-                            clipPath(bodyPath) {
-                                val b = bodyPath.getBounds()
-                                val side = maxOf(b.width, b.height)
-                                val srcSide = min(art.width, art.height)
-                                drawImage(
-                                    image = art,
-                                    srcOffset = IntOffset(
-                                        (art.width - srcSide) / 2,
-                                        (art.height - srcSide) / 2,
-                                    ),
-                                    srcSize = IntSize(srcSide, srcSide),
-                                    dstOffset = IntOffset(
-                                        (b.center.x - side / 2f).toInt(),
-                                        (b.center.y - side / 2f).toInt(),
-                                    ),
-                                    dstSize = IntSize(side.toInt() + 1, side.toInt() + 1),
-                                    alpha = artShow,
-                                )
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = ArtScrim,
-                                        center = body,
-                                        radius = r * 1.3f,
-                                    ),
-                                    radius = r * 1.6f,
-                                    center = body,
-                                    alpha = artShow,
-                                )
-                            }
-                            drawPath(
-                                path = bodyPath,
-                                color = rim,
-                                alpha = artShow,
-                                style = Stroke(width = r * 0.035f),
-                            )
-                        }
                     }
+                }
+                // Cover art (filled and outline alike), centre-cropped into the body, with a
+                // soft scrim so the face stays readable on any artwork.
+                val art = shownArt
+                if (!isSleep && art != null && artShow > 0.01f) {
+                    clipPath(bodyPath) {
+                        val b = bodyPath.getBounds()
+                        val side = maxOf(b.width, b.height)
+                        val srcSide = min(art.width, art.height)
+                        drawImage(
+                            image = art,
+                            srcOffset = IntOffset(
+                                (art.width - srcSide) / 2,
+                                (art.height - srcSide) / 2,
+                            ),
+                            srcSize = IntSize(srcSide, srcSide),
+                            dstOffset = IntOffset(
+                                (b.center.x - side / 2f).toInt(),
+                                (b.center.y - side / 2f).toInt(),
+                            ),
+                            dstSize = IntSize(side.toInt() + 1, side.toInt() + 1),
+                            alpha = artShow,
+                        )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = ArtScrim,
+                                center = body,
+                                radius = r * 1.3f,
+                            ),
+                            radius = r * 1.6f,
+                            center = body,
+                            alpha = artShow,
+                        )
+                    }
+                    drawPath(
+                        path = bodyPath,
+                        color = rim,
+                        alpha = artShow,
+                        style = Stroke(width = r * 0.035f),
+                    )
                 }
 
                 if (!isSleep) {
@@ -817,8 +810,8 @@ private fun DrawScope.drawDotRing(
     if (len <= 0f) return
     val last = levels.size - 1
     val gap = r * 0.1f
-    val step = r * 0.075f
-    val dot = r * 0.022f
+    val step = r * 0.068f
+    val dot = r * 0.024f
     for (i in 0 until DotColumns) {
         val d = len * i / DotColumns
         val p = measure.getPosition(d)
@@ -841,13 +834,15 @@ private fun DrawScope.drawDotRing(
         val level = a + (b - a) * (f - lo)
         val lit = level * DotsPerColumn
         val stagger = if (i % 2 == 1) step * 0.5f else 0f
+        // Loud columns also swell their dots, so peaks read as bursts rather than lines.
+        val swell = 0.8f + 0.5f * level
         for (k in 0 until DotsPerColumn) {
             val on = if (k == 0) maxOf(0.3f, lit.coerceAtMost(1f)) else (lit - k).coerceIn(0f, 1f)
             if (on <= 0.01f) break
             val off = gap + stagger + k * step
             drawCircle(
                 color = color,
-                radius = dot * (1f - 0.07f * k),
+                radius = dot * swell * (1f - 0.05f * k),
                 center = Offset(p.x + nx * off, p.y + ny * off),
                 alpha = on * amount,
             )
@@ -855,8 +850,8 @@ private fun DrawScope.drawDotRing(
     }
 }
 
-private const val DotColumns = 72
-private const val DotsPerColumn = 6
+private const val DotColumns = 84
+private const val DotsPerColumn = 10
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

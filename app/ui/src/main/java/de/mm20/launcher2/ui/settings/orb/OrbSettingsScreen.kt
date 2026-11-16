@@ -72,6 +72,10 @@ import de.mm20.launcher2.orb.MediaRingAction
 import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.orb.MediaSkipOptions
 import de.mm20.launcher2.orb.OrbFill
+import de.mm20.launcher2.permissions.PermissionGroup
+import de.mm20.launcher2.permissions.PermissionsManager
+import androidx.appcompat.app.AppCompatActivity
+import android.content.ContextWrapper
 import de.mm20.launcher2.orb.OrbShape
 import de.mm20.launcher2.orb.pie.PieActionType
 import de.mm20.launcher2.orb.pie.PieItem
@@ -134,6 +138,10 @@ fun OrbSettingsScreen(
                 PackageManager.PERMISSION_GRANTED
         )
     }
+    val permissionsManager: PermissionsManager = koinInject()
+    val hasMediaAccess by remember {
+        permissionsManager.hasPermission(PermissionGroup.Notifications)
+    }.collectAsState(initial = true)
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { audioGranted = it }
@@ -362,9 +370,30 @@ fun OrbSettingsScreen(
             item {
                 OutlinedCard {
                     Column(Modifier.padding(16.dp)) {
+                        Text("Notification access", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (hasMediaAccess) {
+                                "Granted. The orb can see what's playing for cover art, track info and controls."
+                            } else {
+                                "Needed for cover art, track info and the media controls ring."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (!hasMediaAccess) {
+                            Spacer(Modifier.size(8.dp))
+                            Button(onClick = {
+                                var c: android.content.Context? = context
+                                while (c is ContextWrapper && c !is AppCompatActivity) c = c.baseContext
+                                (c as? AppCompatActivity)?.let {
+                                    permissionsManager.requestPermission(it, PermissionGroup.Notifications)
+                                }
+                            }) { Text("Allow notification access") }
+                        }
+                        Spacer(Modifier.size(16.dp))
                         SwitchRow(
                             title = "Cover art",
-                            subtitle = "A filled orb wears the playing track's artwork. An outline orb takes its colour.",
+                            subtitle = "The orb wears the playing track's artwork, rimmed in its colour.",
                             checked = mediaCoverArt,
                             onCheckedChange = {
                                 mediaCoverArt = it
@@ -448,12 +477,6 @@ fun OrbSettingsScreen(
                                 },
                             )
                         }
-                        Spacer(Modifier.size(12.dp))
-                        Text(
-                            "Track info, artwork and controls need notification access (Settings → Integrations → Media).",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                 }
             }

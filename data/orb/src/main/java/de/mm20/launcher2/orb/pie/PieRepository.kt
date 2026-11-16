@@ -215,6 +215,13 @@ class PieRepository(
         }.apply()
     }
 
+    /** Whether the user dismissed the home-screen prompt for notification access. */
+    fun mediaAccessPromptDismissed(): Boolean = prefs.getBoolean(KEY_MEDIA_PROMPT_DISMISSED, false)
+
+    fun saveMediaAccessPromptDismissed(dismissed: Boolean) {
+        prefs.edit().putBoolean(KEY_MEDIA_PROMPT_DISMISSED, dismissed).apply()
+    }
+
     fun mediaRewindSeconds(): Int = prefs.getInt(KEY_MEDIA_REWIND, 10)
 
     fun saveMediaRewindSeconds(seconds: Int) {
@@ -248,6 +255,7 @@ class PieRepository(
         private const val KEY_MEDIA_SLOT_PREFIX = "media_slot_"
         private const val KEY_MEDIA_REWIND = "media_rewind_s"
         private const val KEY_MEDIA_FORWARD = "media_forward_s"
+        private const val KEY_MEDIA_PROMPT_DISMISSED = "media_access_prompt_dismissed"
 
         /** Open player on top, next/previous at the sides, play/pause and skips along the bottom. */
         val defaultMediaRing: Map<MediaRingSlot, MediaRingAction> = mapOf(

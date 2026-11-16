@@ -384,21 +384,21 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             // belongs to the scaffold's own gestures.
             val confinedRadius = sphereRadius + with(density) { 20.dp.toPx() }
 
-            // The media ring sits a control's width outside the pie, squeezed on any side
-            // where the screen edge (or the system bars) is closer than that.
-            val ringGap = with(density) { 74.dp.toPx() }
-            val ringMargin = with(density) { 34.dp.toPx() }
-            val ringMin = pieRadius + with(density) { 12.dp.toPx() }
-            val ringR = pieRadius + ringGap
-            val topEdge = with(density) { insets.calculateTopPadding().toPx() } + ringMargin
-            val bottomEdge = height - with(density) { insets.calculateBottomPadding().toPx() } - ringMargin
-            val ringGeometry = MediaRingGeometry(
+            // The media ring sits a control's width outside the pie. Near a screen edge its
+            // controls move to the part of the ring that is on screen.
+            val ringMargin = with(density) { 8.dp.toPx() }
+            val ringGeometry = mediaRingGeometry(
                 center = center,
-                rx = ringR.coerceAtMost(minOf(center.x, width - center.x) - ringMargin)
-                    .coerceAtLeast(ringMin),
-                ryUp = ringR.coerceAtMost(center.y - topEdge).coerceAtLeast(ringMin),
-                ryDown = ringR.coerceAtMost(bottomEdge - center.y).coerceAtLeast(ringMin),
                 pieRadius = pieRadius,
+                radius = pieRadius + with(density) { 74.dp.toPx() },
+                itemRadius = with(density) { 33.dp.toPx() },
+                bounds = androidx.compose.ui.geometry.Rect(
+                    left = ringMargin,
+                    top = with(density) { insets.calculateTopPadding().toPx() } + ringMargin,
+                    right = width - ringMargin,
+                    bottom = height - with(density) { insets.calculateBottomPadding().toPx() } - ringMargin,
+                ),
+                slots = mediaSlots,
             )
             val ringActive = showMediaRing && !sleeping
 

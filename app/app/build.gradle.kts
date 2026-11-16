@@ -33,8 +33,8 @@ android {
         applicationId = "com.anmol.orb"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.toIntOrNull() ?: 2026111202
-        versionName = "0.4.1"
+        versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.toIntOrNull() ?: 2026111601
+        versionName = "0.4.2"
         signingConfig = signingConfigs.getByName("debug")
     }
 

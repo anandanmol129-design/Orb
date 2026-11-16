@@ -3,6 +3,8 @@ package de.mm20.launcher2.ui.launcher.wallpaper.depth
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ColorSpace
+import android.graphics.Rect
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
@@ -32,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.toSize
 import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.preferences.ui.UiSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,11 +56,15 @@ interface SubjectSegmenter {
 /** Thrown by a [SubjectSegmenter] while its model is still being downloaded. */
 class SegmenterNotReadyException(cause: Throwable? = null) : Exception(cause)
 
-class DepthImages(val background: ImageBitmap, val foreground: ImageBitmap)
+/** The applied wallpaper photo and, when a subject was found, its cutout (same size). */
+class DepthImages(val background: ImageBitmap, val foreground: ImageBitmap?)
+
+/** A photo being framed in the editor; [cutout] is its subject, same size, if one was found. */
+class DepthSource(val photo: Bitmap, val cutout: Bitmap?)
 
 /**
  * The depth-effect photo and its subject cutout, kept in the app's files so the cutout only has
- * to be computed once per photo.
+ * to be computed once per photo. The uncropped source is kept too so it can be re-framed later.
  */
 object DepthWallpaperStore {
     private const val MaxSide = 2400
@@ -69,8 +76,10 @@ object DepthWallpaperStore {
     private fun dir(context: Context) = File(context.filesDir, "depth_wallpaper")
     private fun backgroundFile(context: Context) = File(dir(context), "background.jpg")
     private fun foregroundFile(context: Context) = File(dir(context), "foreground.png")
+    private fun sourceFile(context: Context) = File(dir(context), "source.jpg")
+    private fun sourceCutoutFile(context: Context) = File(dir(context), "source_cutout.png")
 
-    fun hasPhoto(context: Context) = backgroundFile(context).exists() && foregroundFile(context).exists()
+    fun hasPhoto(context: Context) = backgroundFile(context).exists()
 
     suspend fun ensureLoaded(context: Context) {
         if (loaded) return
@@ -83,9 +92,9 @@ object DepthWallpaperStore {
             if (!hasPhoto(context)) null
             else {
                 val bg = BitmapFactory.decodeFile(backgroundFile(context).path)
-                val fg = BitmapFactory.decodeFile(foregroundFile(context).path)
-                if (bg == null || fg == null) null
-                else DepthImages(bg.asImageBitmap(), fg.asImageBitmap())
+                val fg = foregroundFile(context).takeIf { it.exists() }
+                    ?.let { BitmapFactory.decodeFile(it.path) }
+                bg?.let { DepthImages(it.asImageBitmap(), fg?.asImageBitmap()) }
             }
         } catch (e: Exception) {
             Log.e("DepthWallpaper", "Could not load depth wallpaper", e)
@@ -93,29 +102,114 @@ object DepthWallpaperStore {
         }
     }
 
-    /** Decodes [uri], cuts out its subject and stores both. Throws on failure. */
-    suspend fun setPhoto(context: Context, uri: Uri, segmenter: SubjectSegmenter) {
-        val photo = withContext(Dispatchers.IO) { decode(context, uri) }
-        val cutout = segmenter.cutOut(photo)
+    /** The uncropped photo of the current wallpaper (falls back to the cropped one), or null. */
+    suspend fun loadSource(context: Context): DepthSource? = withContext(Dispatchers.IO) {
+        try {
+            val photoFile = sourceFile(context).takeIf { it.exists() }
+                ?: backgroundFile(context).takeIf { it.exists() }
+                ?: return@withContext null
+            val cutoutFile = if (photoFile == sourceFile(context)) sourceCutoutFile(context)
+            else foregroundFile(context)
+            val photo = BitmapFactory.decodeFile(photoFile.path) ?: return@withContext null
+            val cutout = cutoutFile.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
+            DepthSource(photo, cutout)
+        } catch (e: Exception) {
+            Log.e("DepthWallpaper", "Could not load depth source", e)
+            null
+        }
+    }
+
+    /** Decodes [uri] into a software ARGB_8888 sRGB bitmap. Throws on failure. */
+    suspend fun decodePhoto(context: Context, uri: Uri): Bitmap =
+        withContext(Dispatchers.IO) { toArgb(decode(context, uri)) }
+
+    /**
+     * Cuts out [photo]'s subject, or returns null when none is found. Throws
+     * [SegmenterNotReadyException] while the model is downloading.
+     */
+    suspend fun findSubject(photo: Bitmap, segmenter: SubjectSegmenter): Bitmap? {
+        return try {
+            toArgb(segmenter.cutOut(photo))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: SegmenterNotReadyException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("DepthWallpaper", "No subject found", e)
+            null
+        }
+    }
+
+    /**
+     * Crops [source] to [crop] (in photo pixels) and makes it the wallpaper. When [source] has no
+     * cutout, the subject search is retried on the crop, where the subject is bigger.
+     * @return whether the applied wallpaper has a subject in front of the clock.
+     */
+    suspend fun apply(
+        context: Context,
+        source: DepthSource,
+        crop: Rect,
+        segmenter: SubjectSegmenter,
+    ): Boolean {
+        val photo = source.photo
+        val r = Rect(
+            crop.left.coerceIn(0, photo.width - 1),
+            crop.top.coerceIn(0, photo.height - 1),
+            crop.right.coerceIn(1, photo.width),
+            crop.bottom.coerceIn(1, photo.height),
+        )
+        val bg = withContext(Dispatchers.Default) {
+            Bitmap.createBitmap(photo, r.left, r.top, r.width(), r.height())
+        }
+        val fg = source.cutout
+            ?.let { withContext(Dispatchers.Default) { Bitmap.createBitmap(it, r.left, r.top, r.width(), r.height()) } }
+            ?: runCatching { findSubject(bg, segmenter) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull()
         withContext(Dispatchers.IO) {
             dir(context).mkdirs()
-            backgroundFile(context).outputStream().use {
+            sourceFile(context).outputStream().use {
                 photo.compress(Bitmap.CompressFormat.JPEG, 92, it)
             }
-            foregroundFile(context).outputStream().use {
-                cutout.compress(Bitmap.CompressFormat.PNG, 100, it)
+            if (source.cutout != null) {
+                sourceCutoutFile(context).outputStream().use {
+                    source.cutout.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+            } else sourceCutoutFile(context).delete()
+            backgroundFile(context).outputStream().use {
+                bg.compress(Bitmap.CompressFormat.JPEG, 92, it)
             }
+            if (fg != null) {
+                foregroundFile(context).outputStream().use {
+                    fg.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+            } else foregroundFile(context).delete()
         }
         loaded = true
         reload(context)
+        return fg != null
     }
 
-    /** Software ARGB bitmap, EXIF orientation applied, longest side at most [MaxSide]. */
+    /**
+     * [bitmap] as a software ARGB_8888 sRGB bitmap. HDR / wide-gamut photos otherwise decode as
+     * RGBA_F16, which the subject segmenter rejects.
+     */
+    private fun toArgb(bitmap: Bitmap): Bitmap {
+        val srgb = bitmap.colorSpace == null ||
+                bitmap.colorSpace == ColorSpace.get(ColorSpace.Named.SRGB)
+        if (bitmap.config == Bitmap.Config.ARGB_8888 && srgb) return bitmap
+        val out = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(out).drawBitmap(bitmap, 0f, 0f, null)
+        return out
+    }
+
+    /** Software bitmap, EXIF orientation applied, longest side at most [MaxSide]. */
     private fun decode(context: Context, uri: Uri): Bitmap {
         if (Build.VERSION.SDK_INT >= 28) {
             val source = ImageDecoder.createSource(context.contentResolver, uri)
             return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.setTargetColorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
                 val longest = max(info.size.width, info.size.height)
                 if (longest > MaxSide) {
                     val f = MaxSide.toFloat() / longest
@@ -190,7 +284,8 @@ fun DepthWallpaperBackground(images: DepthImages, modifier: Modifier = Modifier)
  * same pixels, so overlaying only here is visually identical to a full-screen foreground layer.
  */
 fun Modifier.depthForeground(): Modifier = composed {
-    val images = rememberActiveDepthImages() ?: return@composed this
+    val images = rememberActiveDepthImages()?.takeIf { it.foreground != null }
+        ?: return@composed this
     var rootSize by remember { mutableStateOf(Size.Zero) }
     var position by remember { mutableStateOf(Offset.Zero) }
     this
@@ -200,6 +295,6 @@ fun Modifier.depthForeground(): Modifier = composed {
         }
         .drawWithContent {
             drawContent()
-            drawCropped(images.foreground, rootSize, position)
+            images.foreground?.let { drawCropped(it, rootSize, position) }
         }
 }

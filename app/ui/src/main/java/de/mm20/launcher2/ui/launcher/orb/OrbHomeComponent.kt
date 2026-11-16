@@ -417,7 +417,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                             }
                         }
                     }
-                    .pointerInput(sleeping, items) {
+                    .pointerInput(sleeping, items, confinedRadius) {
                         var tapCount = 0
                         var tapDebounce: Job? = null
                         // How long a tap waits for a follow-up tap. Only paid when a double or

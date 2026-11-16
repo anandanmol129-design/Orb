@@ -153,9 +153,19 @@ class PieRepository(
 
     fun orbCenterX(): Float = prefs.getFloat(KEY_ORB_CX, 0.5f)
 
-    fun orbCenterY(): Float = prefs.getFloat(KEY_ORB_CY, 0.52f)
+    /** New installs start with the orb in the middle of the screen's bottom half. */
+    fun orbCenterY(): Float = prefs.getFloat(KEY_ORB_CY, 0.75f)
 
-    fun orbScale(): Float = prefs.getFloat(KEY_ORB_SCALE, 1f)
+    /**
+     * The orb's size relative to its original default, or NaN while the user hasn't resized it.
+     * NaN tells the home screen to use a fixed physical size (about 2 cm across the radius)
+     * instead, which a screen-relative scale can't express.
+     */
+    fun orbScale(): Float = prefs.getFloat(KEY_ORB_SCALE, Float.NaN)
+
+    /** Whether any orb position or size has been saved. */
+    fun hasOrbLayout(): Boolean =
+        prefs.contains(KEY_ORB_CY) || prefs.contains(KEY_ORB_SCALE) || prefs.contains(KEY_ORB_CX)
 
     fun saveOrbLayout(centerX: Float, centerY: Float, scale: Float) {
         prefs.edit()

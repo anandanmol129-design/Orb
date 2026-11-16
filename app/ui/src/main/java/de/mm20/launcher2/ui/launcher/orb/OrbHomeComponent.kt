@@ -322,7 +322,13 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             center = Offset(width * orbCX, height * orbCY)
             // Slices must sit clear of the dead zone, which in turn must clear the sphere,
             // otherwise releasing on a slice is read as a cancel.
-            val sphereRadius = minSide * 0.28f * orbScale
+            // Until the user resizes it, the orb is about 2 cm in radius (126 dp is 2 cm at
+            // Android's 160 dpi reference density), kept inside the range edit mode allows.
+            val sphereRadius = if (orbScale.isNaN()) {
+                with(density) { 126.dp.toPx() }.coerceIn(minSide * 0.14f, minSide * 0.448f)
+            } else {
+                minSide * 0.28f * orbScale
+            }
             pieRadius = sphereRadius * 1.43f
             deadZone = maxOf(sphereRadius + with(density) { 4.dp.toPx() }, sphereRadius * 1.07f)
             // Touches only count within this radius of the orb; the rest of the screen

@@ -22,6 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +50,10 @@ import de.mm20.launcher2.ui.component.NavBarEffects
 import de.mm20.launcher2.ui.ktx.animateTo
 import de.mm20.launcher2.ui.launcher.scaffold.Gesture
 import de.mm20.launcher2.ui.launcher.scaffold.LauncherScaffold
+import de.mm20.launcher2.ui.launcher.setup.FirstRunSetup
+import de.mm20.launcher2.ui.launcher.setup.FirstRunSetupOverlay
+import de.mm20.launcher2.orb.pie.PieRepository
+import org.koin.android.ext.android.get
 import de.mm20.launcher2.ui.launcher.scaffold.ScaffoldAnimation
 import de.mm20.launcher2.ui.launcher.scaffold.ScaffoldConfiguration
 import de.mm20.launcher2.ui.launcher.scaffold.ScaffoldGesture
@@ -114,6 +119,11 @@ abstract class SharedLauncherActivity(
         viewModel.setSystemInDarkMode(resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)
 
         val bottomSheetManager = LauncherBottomSheetManager(this)
+
+        // Decided before the home screen first reads the orb layout: an updated install gets
+        // its old orb defaults written here.
+        val setupNeeded = mode == LauncherActivityMode.Launcher &&
+                FirstRunSetup.isNeeded(this, get<PieRepository>())
 
         setContent {
             val snackbarHostState = remember { SnackbarHostState() }
@@ -214,8 +224,16 @@ abstract class SharedLauncherActivity(
                                 modifier = Modifier.fillMaxSize(),
                             )
 
+                            var showSetup by rememberSaveable { mutableStateOf(setupNeeded) }
+                            // The setup sheet follows the app theme, not the wallpaper, so the
+                            // system bar icons do too while it is up.
+                            val statusIcons = if (showSetup) !darkTheme else lightStatus
+                            val navIcons = if (showSetup) !darkTheme else lightNav
+
                             val config = remember(
                                 mode,
+                                statusIcons,
+                                navIcons,
                                 reverseSearchResults,
                                 bottomSearchBar,
                                 fixedSearchBar,
@@ -381,8 +399,8 @@ abstract class SharedLauncherActivity(
                                         fixedSearchBar = fixedSearchBar,
                                         searchBarStyle = searchBarStyle,
                                         searchBarPosition = if (bottomSearchBar) SearchBarPosition.Bottom else SearchBarPosition.Top,
-                                        darkStatusBarIcons = lightStatus,
-                                        darkNavBarIcons = lightNav,
+                                        darkStatusBarIcons = statusIcons,
+                                        darkNavBarIcons = navIcons,
                                         backgroundColor = backgroundColor,
                                         showStatusBar = !hideStatus,
                                         showNavBar = !hideNav,
@@ -443,6 +461,13 @@ abstract class SharedLauncherActivity(
                                 }
                             }
                             LauncherBottomSheets()
+
+                            if (showSetup) {
+                                FirstRunSetupOverlay(onDone = {
+                                    FirstRunSetup.markDone(this@SharedLauncherActivity)
+                                    showSetup = false
+                                })
+                            }
                         }
                     }
                 }

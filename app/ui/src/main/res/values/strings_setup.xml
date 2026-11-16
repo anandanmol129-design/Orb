@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_wallpaper_title">Pick a wallpaper</string>
+    <string name="setup_wallpaper_body">Keep your own wallpaper, let Orb pick a new animated one every time you unlock, or choose one.</string>
+    <string name="setup_wallpaper_keep_system">Keep mine</string>
+    <string name="setup_wallpaper_random">Random</string>
+    <string name="setup_clock_title">Pick a clock</string>
+    <string name="setup_clock_body">It sits at the top of your home screen. You can change it later in Settings → Home screen → Clock.</string>
+    <string name="setup_permissions_title">Allow what you need</string>
+    <string name="setup_permissions_body">Everything here is optional. You can change it any time in Android settings.</string>
+    <string name="setup_permission_mic_title">Microphone</string>
+    <string name="setup_permission_mic_body">So you can talk to the orb.</string>
+    <string name="setup_permission_notifications_title">Notification access</string>
+    <string name="setup_permission_notifications_body">Shows the song that\'s playing under the clock, and notification badges on apps.</string>
+    <string name="setup_permission_contacts_title">Contacts</string>
+    <string name="setup_permission_contacts_body">Find people when you search.</string>
+    <string name="setup_permission_calendar_title">Calendar</string>
+    <string name="setup_permission_calendar_body">Show upcoming events in search.</string>
+    <string name="setup_permission_location_title">Location</string>
+    <string name="setup_permission_location_body">Show local weather next to the clock.</string>
+    <string name="setup_permission_allow">Allow</string>
+    <string name="setup_permission_allowed">Allowed</string>
+    <string name="setup_default_title">Make Orb your home screen</string>
+    <string name="setup_default_body">Set Orb as your default home app so it opens when you press the home button or swipe home.</string>
+    <string name="setup_default_button">Set as default</string>
+    <string name="setup_default_done">Orb is your home screen</string>
+    <string name="setup_next">Next</string>
+    <string name="setup_back">Back</string>
+    <string name="setup_finish">Start using Orb</string>
+    <string name="setup_skip">Not now</string>
+</resources>

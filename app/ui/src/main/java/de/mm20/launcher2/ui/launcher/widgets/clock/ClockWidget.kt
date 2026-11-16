@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -243,6 +244,9 @@ fun ClockWidget(
                 }
                 val dockProvider by viewModel.dockProvider.collectAsState()
                 if (dockProvider != null && !preview) {
+                    // The dock belongs at the bottom of the screen, above the search bar,
+                    // not right under the clock.
+                    Spacer(Modifier.weight(1f))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

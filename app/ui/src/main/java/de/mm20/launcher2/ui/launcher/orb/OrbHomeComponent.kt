@@ -408,15 +408,20 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             }
 
             // Built-in clock widget (configured in Settings → Home screen → Clock), pinned to
-            // the top of the screen. Style "No clock" turns it off. zIndex keeps it above the
-            // orb's full-screen gesture layer so its taps are never stolen (upstream has no
-            // such layer above the clock).
-            ClockWidget(
-                modifier = modifier
+            // the top of the screen, with the dock at the bottom. Style "No clock" turns it off.
+            // The zIndex sits on this wrapper, a sibling of the orb's full-screen gesture layer:
+            // Compose sends a touch only to the topmost sibling hit, so without it the orb layer
+            // swallowed every tap on the clock and dock. Empty areas of the wrapper take no
+            // touches, so they still reach the orb. While the pie is open the orb comes first,
+            // so a slice over the dock can still be picked.
+            Box(
+                modifier = Modifier
                     .fillMaxSize()
                     .padding(insets)
-                    .zIndex(1f),
-            )
+                    .zIndex(if (pieOpen) 0f else 1f),
+            ) {
+                ClockWidget(modifier = Modifier.fillMaxSize())
+            }
 
             if (editMode) {
                 val trashCenter = Offset(

@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import de.mm20.launcher2.preferences.ui.UiSettings
 import de.mm20.launcher2.searchable.PinnedLevel
@@ -52,17 +53,24 @@ class FavoritesPartProvider : PartProvider, KoinComponent {
         }.collectAsState(emptyList())
 
 
+        // Each icon gets a normal grid cell, centred, so a dock with fewer favorites than
+        // columns doesn't stretch a few icons' touch areas across the whole screen.
+        val used = columns.coerceAtMost(favorites.size)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()
+                .wrapContentHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SearchResultGrid(
-                items = favorites,
-                showLabels = false,
-                columns = columns.coerceAtMost(favorites.size),
-                transitionKey = null,
-            )
+            if (used > 0) {
+                SearchResultGrid(
+                    modifier = Modifier.fillMaxWidth(used / columns.toFloat()),
+                    items = favorites,
+                    showLabels = false,
+                    columns = used,
+                    transitionKey = null,
+                )
+            }
         }
     }
 }

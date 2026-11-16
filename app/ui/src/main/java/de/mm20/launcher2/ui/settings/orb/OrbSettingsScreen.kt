@@ -1,6 +1,8 @@
 package de.mm20.launcher2.ui.settings.orb
 
+import android.Manifest
 import android.app.role.RoleManager
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -58,10 +62,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.mm20.launcher2.applications.AppRepository
 import kotlinx.coroutines.flow.map
+import androidx.core.content.ContextCompat
+import de.mm20.launcher2.orb.MediaRingAction
+import de.mm20.launcher2.orb.MediaRingSlot
+import de.mm20.launcher2.orb.MediaSkipOptions
 import de.mm20.launcher2.orb.OrbFill
 import de.mm20.launcher2.orb.OrbShape
 import de.mm20.launcher2.orb.pie.PieActionType
@@ -113,6 +122,21 @@ fun OrbSettingsScreen(
     var showAppPicker by remember { mutableStateOf(false) }
     var orbShape by remember { mutableStateOf(pieRepository.orbShape()) }
     var orbFill by remember { mutableStateOf(pieRepository.orbFill()) }
+
+    var mediaRingEnabled by remember { mutableStateOf(pieRepository.mediaRingEnabled()) }
+    var mediaCoverArt by remember { mutableStateOf(pieRepository.mediaCoverArt()) }
+    var mediaSlots by remember { mutableStateOf(pieRepository.mediaRing()) }
+    var rewindSeconds by remember { mutableStateOf(pieRepository.mediaRewindSeconds()) }
+    var forwardSeconds by remember { mutableStateOf(pieRepository.mediaForwardSeconds()) }
+    var audioGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { audioGranted = it }
 
     fun persist(items: List<PieItem>) {
         pieItems = items
@@ -334,6 +358,106 @@ fun OrbSettingsScreen(
                 }
             }
 
+            item { SectionTitle("Music") }
+            item {
+                OutlinedCard {
+                    Column(Modifier.padding(16.dp)) {
+                        SwitchRow(
+                            title = "Cover art",
+                            subtitle = "A filled orb wears the playing track's artwork. An outline orb takes its colour.",
+                            checked = mediaCoverArt,
+                            onCheckedChange = {
+                                mediaCoverArt = it
+                                pieRepository.saveMediaCoverArt(it)
+                            },
+                        )
+                        Spacer(Modifier.size(16.dp))
+                        Text("Visualizer", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (audioGranted) {
+                                "The orb's edge reacts to whatever is playing."
+                            } else {
+                                "Allow audio access so the orb's edge can follow the actual music. Without it, the edge pulses to a steady beat."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (!audioGranted) {
+                            Spacer(Modifier.size(8.dp))
+                            Button(onClick = {
+                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }) { Text("Allow audio access") }
+                        }
+                    }
+                }
+            }
+            item {
+                OutlinedCard {
+                    Column(Modifier.padding(16.dp)) {
+                        SwitchRow(
+                            title = "Media controls ring",
+                            subtitle = "While music plays, a second ring of controls appears outside the pie. Drag out to it and release.",
+                            checked = mediaRingEnabled,
+                            onCheckedChange = {
+                                mediaRingEnabled = it
+                                pieRepository.saveMediaRingEnabled(it)
+                            },
+                        )
+                        if (mediaRingEnabled) {
+                            Spacer(Modifier.size(16.dp))
+                            Text(
+                                "Arrangement",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "Tap a position to choose its control.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            MediaRingEditor(
+                                slots = mediaSlots,
+                                rewindSeconds = rewindSeconds,
+                                forwardSeconds = forwardSeconds,
+                                onChange = { slot, action ->
+                                    pieRepository.saveMediaRingSlot(slot, action)
+                                    mediaSlots = pieRepository.mediaRing()
+                                },
+                            )
+                            TextButton(onClick = {
+                                pieRepository.resetMediaRing()
+                                mediaSlots = pieRepository.mediaRing()
+                            }) { Text("Reset arrangement") }
+                            Spacer(Modifier.size(8.dp))
+                            SkipChooser(
+                                title = "Skip back",
+                                value = rewindSeconds,
+                                onChange = {
+                                    rewindSeconds = it
+                                    pieRepository.saveMediaRewindSeconds(it)
+                                },
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            SkipChooser(
+                                title = "Skip forward",
+                                value = forwardSeconds,
+                                onChange = {
+                                    forwardSeconds = it
+                                    pieRepository.saveMediaForwardSeconds(it)
+                                },
+                            )
+                        }
+                        Spacer(Modifier.size(12.dp))
+                        Text(
+                            "Track info, artwork and controls need notification access (Settings → Integrations → Media).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
             item { SectionTitle("Pie menu") }
             items(pieItems, key = { it.id }) { item ->
                 val index = pieItems.indexOf(item)
@@ -405,6 +529,154 @@ fun OrbSettingsScreen(
                 showAppPicker = false
             },
         )
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/** The eight ring positions laid out around a mock orb, each opening a picker for its control. */
+@Composable
+private fun MediaRingEditor(
+    slots: Map<MediaRingSlot, MediaRingAction>,
+    rewindSeconds: Int,
+    forwardSeconds: Int,
+    onChange: (MediaRingSlot, MediaRingAction) -> Unit,
+) {
+    val grid = listOf(
+        listOf(MediaRingSlot.TopLeft, MediaRingSlot.Top, MediaRingSlot.TopRight),
+        listOf(MediaRingSlot.Left, null, MediaRingSlot.Right),
+        listOf(MediaRingSlot.BottomLeft, MediaRingSlot.Bottom, MediaRingSlot.BottomRight),
+    )
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        for (row in grid) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                for (slot in row) {
+                    Box(Modifier.weight(1f).height(64.dp), contentAlignment = Alignment.Center) {
+                        if (slot == null) {
+                            Box(
+                                Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                            )
+                        } else {
+                            SlotCell(
+                                slot = slot,
+                                action = slots.getValue(slot),
+                                rewindSeconds = rewindSeconds,
+                                forwardSeconds = forwardSeconds,
+                                onPick = { onChange(slot, it) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlotCell(
+    slot: MediaRingSlot,
+    action: MediaRingAction,
+    rewindSeconds: Int,
+    forwardSeconds: Int,
+    onPick: (MediaRingAction) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    fun name(a: MediaRingAction) = when (a) {
+        MediaRingAction.Rewind -> "Back ${rewindSeconds}s"
+        MediaRingAction.Forward -> "Forward ${forwardSeconds}s"
+        else -> a.label
+    }
+    val empty = action == MediaRingAction.None
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (empty) MaterialTheme.colorScheme.surfaceContainerLow
+                else MaterialTheme.colorScheme.secondaryContainer
+            )
+            .clickable { expanded = true }
+            .padding(6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (empty) "—" else name(action),
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            color = if (empty) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Text(
+                slot.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            MediaRingAction.entries.forEach { a ->
+                DropdownMenuItem(
+                    text = { Text(name(a)) },
+                    onClick = {
+                        onPick(a)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkipChooser(title: String, value: Int, onChange: (Int) -> Unit) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+    ) {
+        MediaSkipOptions.forEach { seconds ->
+            FilterChip(
+                selected = seconds == value,
+                onClick = { onChange(seconds) },
+                label = { Text("${seconds}s") },
+            )
+        }
     }
 }
 

@@ -8,6 +8,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.AudioManager
 import android.media.MediaMetadata
+import android.media.session.MediaSessionManager
+import android.media.session.MediaSession
+import android.content.ComponentName
 import android.media.session.MediaController
 import android.media.session.PlaybackState.CustomAction
 import android.net.Uri
@@ -63,6 +66,9 @@ interface MusicService {
     fun play()
     fun togglePause()
     fun seekTo(position: Long)
+
+    /** Seeks [deltaMs] from the live position (negative for back), clamped to the track. */
+    fun seekBy(deltaMs: Long)
     fun performCustomAction(action: CustomAction)
     fun openPlayer(): PendingIntent?
 
@@ -109,11 +115,15 @@ internal class MusicServiceImpl(
                     settings.allowList,
                     settings.denyList,
                 )
-                val sbn: Notification? = notifications.filter {
-                    it.mediaSessionToken != null && musicApps.contains(it.packageName)
+                val sbn: Notification = notifications.filter {
+                    musicApps.contains(it.packageName) &&
+                        (it.mediaSessionToken != null || it.isMediaStyle)
                 }.maxByOrNull { it.postTime }
+                    ?: return@withContext null
 
-                return@withContext sbn?.mediaSessionToken
+                // Notifications read back in bulk when the listener (re)connects can come without
+                // their session token, so fall back to the app's active session.
+                return@withContext sbn.mediaSessionToken ?: activeSessionToken(sbn.packageName)
             }
         }
             .distinctUntilChanged()
@@ -517,6 +527,36 @@ internal class MusicServiceImpl(
         }
     }
 
+    private val Notification.isMediaStyle: Boolean
+        get() = extras.getString(android.app.Notification.EXTRA_TEMPLATE)
+            ?.contains("MediaStyle") == true
+
+    private fun activeSessionToken(packageName: String): MediaSession.Token? = runCatching {
+        context.getSystemService(MediaSessionManager::class.java)
+            ?.getActiveSessions(ComponentName(context.packageName, NOTIFICATION_LISTENER))
+            ?.firstOrNull { it.packageName == packageName }
+            ?.sessionToken
+    }.getOrNull()
+
+    override fun seekBy(deltaMs: Long) {
+        scope.launch {
+            val controller = currentMediaController.firstOrNull() ?: return@launch
+            val state = controller.playbackState ?: return@launch
+            if (state.position < 0) return@launch
+            var now = state.position
+            if (state.state == android.media.session.PlaybackState.STATE_PLAYING &&
+                state.lastPositionUpdateTime > 0
+            ) {
+                now += ((SystemClock.elapsedRealtime() - state.lastPositionUpdateTime) *
+                    state.playbackSpeed).toLong()
+            }
+            var target = (now + deltaMs).coerceAtLeast(0L)
+            val duration = controller.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+            if (duration > 0) target = target.coerceAtMost(duration - 1000L).coerceAtLeast(0L)
+            controller.transportControls.seekTo(target)
+        }
+    }
+
     override fun seekTo(position: Long) {
         scope.launch {
             val controller = currentMediaController.firstOrNull()
@@ -601,6 +641,7 @@ internal class MusicServiceImpl(
     }
 
     companion object {
+        private const val NOTIFICATION_LISTENER = "de.mm20.launcher2.notifications.NotificationService"
 
         private const val PREFS = "music"
         private const val PREFS_KEY_TITLE = "title"

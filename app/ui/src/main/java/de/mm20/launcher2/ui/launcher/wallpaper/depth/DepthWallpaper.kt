@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.toSize
 import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.preferences.ui.UiSettings
+import de.mm20.launcher2.ui.locals.LocalPreferDarkContentOverWallpaper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,8 +60,23 @@ class SegmenterNotReadyException(cause: Throwable? = null) : Exception(cause)
 /** The applied wallpaper photo and, when a subject was found, its cutout (same size). */
 class DepthImages(val background: ImageBitmap, val foreground: ImageBitmap?)
 
-/** A photo being framed in the editor; [cutout] is its subject, same size, if one was found. */
-class DepthSource(val photo: Bitmap, val cutout: Bitmap?)
+/**
+ * Where the home screen clock sits, as fractions of the screen size, so the editor can draw the
+ * real clock in the same place.
+ */
+data class ClockPlacement(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    /** Whether the home screen draws the clock in dark colors (for "Auto" clock color). */
+    val darkContent: Boolean = false,
+)
+
+/**
+ * A photo being framed in the editor; [cutout] is its subject, same size, if one was found.
+ * [crop] is the framing it was last applied with, in photo pixels.
+ */
+class DepthSource(val photo: Bitmap, val cutout: Bitmap?, val crop: Rect? = null)
 
 /**
  * The depth-effect photo and its subject cutout, kept in the app's files so the cutout only has
@@ -80,6 +96,35 @@ object DepthWallpaperStore {
     private fun sourceCutoutFile(context: Context) = File(dir(context), "source_cutout.png")
 
     fun hasPhoto(context: Context) = backgroundFile(context).exists()
+
+    private val _clockPlacement = MutableStateFlow<ClockPlacement?>(null)
+
+    /** Last known home screen clock placement; survives restarts via shared preferences. */
+    fun clockPlacement(context: Context): StateFlow<ClockPlacement?> {
+        if (_clockPlacement.value == null) {
+            val prefs = context.getSharedPreferences("depth_wallpaper", Context.MODE_PRIVATE)
+            if (prefs.contains("clock_top")) {
+                _clockPlacement.value = ClockPlacement(
+                    prefs.getFloat("clock_left", 0f),
+                    prefs.getFloat("clock_top", 0f),
+                    prefs.getFloat("clock_width", 1f),
+                    prefs.getBoolean("clock_dark", false),
+                )
+            }
+        }
+        return _clockPlacement.asStateFlow()
+    }
+
+    fun setClockPlacement(context: Context, placement: ClockPlacement) {
+        if (placement == _clockPlacement.value) return
+        _clockPlacement.value = placement
+        context.getSharedPreferences("depth_wallpaper", Context.MODE_PRIVATE).edit()
+            .putFloat("clock_left", placement.left)
+            .putFloat("clock_top", placement.top)
+            .putFloat("clock_width", placement.width)
+            .putBoolean("clock_dark", placement.darkContent)
+            .apply()
+    }
 
     suspend fun ensureLoaded(context: Context) {
         if (loaded) return
@@ -112,7 +157,11 @@ object DepthWallpaperStore {
             else foregroundFile(context)
             val photo = BitmapFactory.decodeFile(photoFile.path) ?: return@withContext null
             val cutout = cutoutFile.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
-            DepthSource(photo, cutout)
+            val prefs = context.getSharedPreferences("depth_wallpaper", Context.MODE_PRIVATE)
+            val crop = if (photoFile == sourceFile(context) && prefs.contains("crop")) {
+                prefs.getString("crop", null)?.let { Rect.unflattenFromString(it) }
+            } else null
+            DepthSource(photo, cutout, crop)
         } catch (e: Exception) {
             Log.e("DepthWallpaper", "Could not load depth source", e)
             null
@@ -184,6 +233,9 @@ object DepthWallpaperStore {
                     fg.compress(Bitmap.CompressFormat.PNG, 100, it)
                 }
             } else foregroundFile(context).delete()
+            context.getSharedPreferences("depth_wallpaper", Context.MODE_PRIVATE).edit()
+                .putString("crop", r.flattenToString())
+                .apply()
         }
         loaded = true
         reload(context)
@@ -297,4 +349,26 @@ fun Modifier.depthForeground(): Modifier = composed {
             drawContent()
             images.foreground?.let { drawCropped(it, rootSize, position) }
         }
+}
+
+/** Records where the home screen clock is, for the depth wallpaper editor's preview. */
+fun Modifier.reportClockPlacement(): Modifier = composed {
+    val context = LocalContext.current
+    val darkContent = LocalPreferDarkContentOverWallpaper.current
+    onGloballyPositioned {
+        val root = it.findRootCoordinates().size
+        if (root.width <= 0 || root.height <= 0 || it.size.width <= 0) return@onGloballyPositioned
+        val pos = it.positionInRoot()
+        // Rounded so sub-pixel jitter doesn't cause a write.
+        fun r(v: Float) = (v * 1000f).toInt() / 1000f
+        DepthWallpaperStore.setClockPlacement(
+            context,
+            ClockPlacement(
+                left = r(pos.x / root.width),
+                top = r(pos.y / root.height),
+                width = r(it.size.width.toFloat() / root.width),
+                darkContent = darkContent,
+            )
+        )
+    }
 }

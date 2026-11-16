@@ -70,6 +70,7 @@ import de.mm20.launcher2.ui.launcher.widgets.clock.clocks.SegmentClock
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.DatePartProvider
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.PartProvider
 import de.mm20.launcher2.ui.launcher.wallpaper.depth.depthForeground
+import de.mm20.launcher2.ui.launcher.wallpaper.depth.reportClockPlacement
 import de.mm20.launcher2.ui.locals.LocalPreferDarkContentOverWallpaper
 import de.mm20.launcher2.ui.locals.LocalTimeFormat
 import de.mm20.launcher2.ui.settings.clockwidget.ClockWidgetSettingsScreenVM
@@ -80,6 +81,8 @@ import org.koin.compose.koinInject
 fun ClockWidget(
     modifier: Modifier = Modifier,
     editMode: Boolean = false,
+    /** Only the clock itself, for the depth wallpaper editor: no depth overlay or dock. */
+    preview: Boolean = false,
 ) {
     val viewModel: ClockWidgetVM = viewModel()
     val context = LocalContext.current
@@ -152,7 +155,10 @@ fun ClockWidget(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .depthForeground()
+                        .then(
+                            if (preview) Modifier
+                            else Modifier.reportClockPlacement().depthForeground()
+                        )
                         .padding(horizontal = if (compact == true) 0.dp else 24.dp),
                     contentAlignment = Alignment.TopCenter,
                 ) {
@@ -236,7 +242,7 @@ fun ClockWidget(
                     }
                 }
                 val dockProvider by viewModel.dockProvider.collectAsState()
-                if (dockProvider != null) {
+                if (dockProvider != null && !preview) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

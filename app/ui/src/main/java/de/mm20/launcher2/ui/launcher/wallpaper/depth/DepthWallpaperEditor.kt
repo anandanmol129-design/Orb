@@ -2,7 +2,6 @@ package de.mm20.launcher2.ui.launcher.wallpaper.depth
 
 import android.graphics.Rect
 import android.net.Uri
-import android.text.format.DateFormat
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,7 +32,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,15 +52,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import de.mm20.launcher2.preferences.ui.UiSettings
 import de.mm20.launcher2.ui.R
+import de.mm20.launcher2.ui.locals.LocalPreferDarkContentOverWallpaper
+import de.mm20.launcher2.ui.launcher.widgets.clock.ClockWidget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -91,7 +94,7 @@ fun DepthWallpaperEditor(segmenter: SubjectSegmenter, onDismiss: () -> Unit) {
         segmentJob = scope.launch {
             subject = try {
                 val cutout = DepthWallpaperStore.findSubject(photo, segmenter)
-                if (source?.photo === photo) source = DepthSource(photo, cutout)
+                if (source?.photo === photo) source = DepthSource(photo, cutout, source?.crop)
                 if (cutout != null) SubjectState.Found else SubjectState.NotFound
             } catch (e: CancellationException) {
                 throw e
@@ -162,8 +165,18 @@ fun DepthWallpaperEditor(segmenter: SubjectSegmenter, onDismiss: () -> Unit) {
         offsetY = (frameSize.height - photo.height * scale) / 2f
     }
 
-    // A new photo or a new frame size starts centered and filling the screen.
-    LaunchedEffect(photo, frameSize) { reset() }
+    // The current wallpaper reopens with its saved framing; a new photo starts centered.
+    LaunchedEffect(photo, frameSize) {
+        val crop = source?.crop
+        if (photo == null || frameSize == IntSize.Zero) return@LaunchedEffect
+        if (crop == null || crop.width() <= 0) reset()
+        else {
+            scale = frameSize.width.toFloat() / crop.width()
+            offsetX = -crop.left * scale
+            offsetY = -crop.top * scale
+            clamp()
+        }
+    }
 
     val photoImage = remember(photo) { photo?.asImageBitmap() }
     val cutoutImage = remember(source?.cutout) { source?.cutout?.asImageBitmap() }
@@ -212,9 +225,33 @@ fun DepthWallpaperEditor(segmenter: SubjectSegmenter, onDismiss: () -> Unit) {
         ) {
             val density = LocalDensity.current
             val size = with(density) { IntSize(maxWidth.roundToPx(), maxHeight.roundToPx()) }
-            val clockTop = maxHeight * 0.16f
             if (size != frameSize) frameSize = size
+            val screenWidth = maxWidth
+            val screenHeight = maxHeight
 
+            val placement by remember { DepthWallpaperStore.clockPlacement(context) }.collectAsState()
+
+            Box(Modifier.fillMaxSize()) {
+                if (photoImage != null && scale > 0f) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawFramed(photoImage, offsetX, offsetY, scale)
+                    }
+                    PreviewClock(placement, screenWidth, screenHeight)
+                    if (cutoutImage != null) {
+                        Canvas(Modifier.fillMaxSize()) {
+                            drawFramed(cutoutImage, offsetX, offsetY, scale)
+                        }
+                    }
+                }
+                if (loading || photoImage == null) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = Color.White,
+                    )
+                }
+            }
+
+            // Gestures on top, so the preview clock never takes a tap.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -232,29 +269,7 @@ fun DepthWallpaperEditor(segmenter: SubjectSegmenter, onDismiss: () -> Unit) {
                     .pointerInput(photo, coverScale) {
                         detectTapGestures(onDoubleTap = { reset() })
                     }
-            ) {
-                if (photoImage != null && scale > 0f) {
-                    Canvas(Modifier.fillMaxSize()) {
-                        drawFramed(photoImage, offsetX, offsetY, scale)
-                    }
-                    SampleClock(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = clockTop)
-                    )
-                    if (cutoutImage != null) {
-                        Canvas(Modifier.fillMaxSize()) {
-                            drawFramed(cutoutImage, offsetX, offsetY, scale)
-                        }
-                    }
-                }
-                if (loading || photoImage == null) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
-                        color = Color.White,
-                    )
-                }
-            }
+            )
 
             Status(
                 text = when {
@@ -314,24 +329,27 @@ private fun DrawScope.drawFramed(image: ImageBitmap, x: Float, y: Float, scale: 
     )
 }
 
-/** Stand-in for the home screen clock, so the subject can be placed in front of it. */
+/**
+ * The real home screen clock (same style, size and settings), placed where the home screen last
+ * drew it. Before the home screen has reported its clock, it sits near the top.
+ */
 @Composable
-private fun SampleClock(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val time = remember {
-        DateFormat.format(
-            if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm",
-            System.currentTimeMillis()
-        ).toString()
+private fun PreviewClock(placement: ClockPlacement?, screenWidth: Dp, screenHeight: Dp) {
+    val modifier = if (placement != null) {
+        Modifier
+            .offset(x = screenWidth * placement.left, y = screenHeight * placement.top)
+            .width(screenWidth * placement.width)
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(top = 64.dp)
     }
-    Text(
-        text = time,
-        modifier = modifier,
-        color = Color.White,
-        fontSize = 112.sp,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
-    )
+    CompositionLocalProvider(
+        LocalPreferDarkContentOverWallpaper provides (placement?.darkContent ?: false)
+    ) {
+        ClockWidget(modifier = modifier, preview = true)
+    }
 }
 
 @Composable

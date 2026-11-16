@@ -635,15 +635,6 @@ fun ConfigureClockWidgetSheet(
                             }
                         )
                         SwitchPreference(
-                            title = stringResource(R.string.preference_clockwidget_music_part),
-                            summary = stringResource(R.string.preference_clockwidget_music_part_summary),
-                            icon = R.drawable.music_note_24px,
-                            value = parts?.music == true,
-                            onValueChanged = {
-                                viewModel.setMusicPart(it)
-                            }
-                        )
-                        SwitchPreference(
                             title = stringResource(R.string.preference_clockwidget_alarm_part),
                             summary = stringResource(R.string.preference_clockwidget_alarm_part_summary),
                             icon = R.drawable.alarm_24px,

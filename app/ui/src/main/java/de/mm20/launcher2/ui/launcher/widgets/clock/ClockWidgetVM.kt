@@ -12,7 +12,6 @@ import de.mm20.launcher2.ui.launcher.widgets.clock.parts.AlarmPartProvider
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.BatteryPartProvider
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.DatePartProvider
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.FavoritesPartProvider
-import de.mm20.launcher2.ui.launcher.widgets.clock.parts.MusicPartProvider
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.PartProvider
 import de.mm20.launcher2.ui.launcher.widgets.clock.parts.SmartspacerPartProvider
 import kotlinx.coroutines.flow.Flow
@@ -37,7 +36,6 @@ class ClockWidgetVM : ViewModel(), KoinComponent {
 
         val providers = mutableListOf<PartProvider>()
         if (parts.date) providers += DatePartProvider()
-        if (parts.music) providers += MusicPartProvider()
         providers += BatteryPartProvider(parts.battery)
         if (parts.alarm) providers += AlarmPartProvider()
         providers

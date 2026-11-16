@@ -1,6 +1,8 @@
 package de.mm20.launcher2.orb.pie
 
 import android.content.Context
+import de.mm20.launcher2.orb.MediaRingAction
+import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.orb.OrbFill
 import de.mm20.launcher2.orb.OrbShape
 import kotlinx.serialization.SerialName
@@ -193,6 +195,55 @@ class PieRepository(
         prefs.edit().putString(KEY_ORB_FILL, fill.name).apply()
     }
 
+    /** Whether the media ring shows around the pie while something is playing. */
+    fun mediaRingEnabled(): Boolean = prefs.getBoolean(KEY_MEDIA_RING, true)
+
+    fun saveMediaRingEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MEDIA_RING, enabled).apply()
+    }
+
+    /** Whether a filled orb wears the current track's cover art. */
+    fun mediaCoverArt(): Boolean = prefs.getBoolean(KEY_MEDIA_ART, true)
+
+    fun saveMediaCoverArt(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MEDIA_ART, enabled).apply()
+    }
+
+    /** The action assigned to every media ring slot. Slots never saved keep their default. */
+    fun mediaRing(): Map<MediaRingSlot, MediaRingAction> = MediaRingSlot.entries.associateWith { slot ->
+        val stored = prefs.getString(KEY_MEDIA_SLOT_PREFIX + slot.name, null)
+        MediaRingAction.entries.firstOrNull { it.name == stored } ?: defaultMediaRing.getValue(slot)
+    }
+
+    fun saveMediaRingSlot(slot: MediaRingSlot, action: MediaRingAction) {
+        prefs.edit().putString(KEY_MEDIA_SLOT_PREFIX + slot.name, action.name).apply()
+    }
+
+    fun resetMediaRing() {
+        prefs.edit().apply {
+            MediaRingSlot.entries.forEach { remove(KEY_MEDIA_SLOT_PREFIX + it.name) }
+        }.apply()
+    }
+
+    /** Whether the user dismissed the home-screen prompt for notification access. */
+    fun mediaAccessPromptDismissed(): Boolean = prefs.getBoolean(KEY_MEDIA_PROMPT_DISMISSED, false)
+
+    fun saveMediaAccessPromptDismissed(dismissed: Boolean) {
+        prefs.edit().putBoolean(KEY_MEDIA_PROMPT_DISMISSED, dismissed).apply()
+    }
+
+    fun mediaRewindSeconds(): Int = prefs.getInt(KEY_MEDIA_REWIND, 10)
+
+    fun saveMediaRewindSeconds(seconds: Int) {
+        prefs.edit().putInt(KEY_MEDIA_REWIND, seconds).apply()
+    }
+
+    fun mediaForwardSeconds(): Int = prefs.getInt(KEY_MEDIA_FORWARD, 10)
+
+    fun saveMediaForwardSeconds(seconds: Int) {
+        prefs.edit().putInt(KEY_MEDIA_FORWARD, seconds).apply()
+    }
+
     private fun ensureEdit(items: List<PieItem>): List<PieItem> =
         if (items.any { it is PieItem.Action && it.type == PieActionType.Edit }) {
             items
@@ -209,6 +260,24 @@ class PieRepository(
         private const val KEY_ORB_SCALE = "orb_scale"
         private const val KEY_ORB_SHAPE = "orb_shape"
         private const val KEY_ORB_FILL = "orb_fill"
+        private const val KEY_MEDIA_RING = "media_ring_enabled"
+        private const val KEY_MEDIA_ART = "media_cover_art"
+        private const val KEY_MEDIA_SLOT_PREFIX = "media_slot_"
+        private const val KEY_MEDIA_REWIND = "media_rewind_s"
+        private const val KEY_MEDIA_FORWARD = "media_forward_s"
+        private const val KEY_MEDIA_PROMPT_DISMISSED = "media_access_prompt_dismissed"
+
+        /** Open player on top, next/previous at the sides, play/pause and skips along the bottom. */
+        val defaultMediaRing: Map<MediaRingSlot, MediaRingAction> = mapOf(
+            MediaRingSlot.Top to MediaRingAction.OpenApp,
+            MediaRingSlot.TopRight to MediaRingAction.None,
+            MediaRingSlot.Right to MediaRingAction.Next,
+            MediaRingSlot.BottomRight to MediaRingAction.Forward,
+            MediaRingSlot.Bottom to MediaRingAction.PlayPause,
+            MediaRingSlot.BottomLeft to MediaRingAction.Rewind,
+            MediaRingSlot.Left to MediaRingAction.Previous,
+            MediaRingSlot.TopLeft to MediaRingAction.None,
+        )
 
         fun defaults(): List<PieItem> = listOf(
             PieItem.Action("voice", PieActionType.Voice, "Voice"),

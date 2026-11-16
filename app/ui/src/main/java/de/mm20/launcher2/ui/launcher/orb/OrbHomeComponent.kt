@@ -2,17 +2,21 @@ package de.mm20.launcher2.ui.launcher.orb
 
 import android.Manifest
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.os.Process
 import androidx.activity.compose.BackHandler
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -51,6 +56,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import de.mm20.launcher2.applications.AppRepository
 import de.mm20.launcher2.appshortcuts.AppShortcutRepository
+import de.mm20.launcher2.ktx.sendWithBackgroundPermission
+import de.mm20.launcher2.music.MusicService
+import de.mm20.launcher2.permissions.PermissionGroup
+import de.mm20.launcher2.permissions.PermissionsManager
+import de.mm20.launcher2.orb.MediaRingAction
+import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.orb.OrbFill
 import de.mm20.launcher2.orb.pie.PieActionType
 import de.mm20.launcher2.orb.pie.PieItem
@@ -128,7 +139,12 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         val voiceState by voiceController.state.collectAsState()
         val amplitude by voiceController.amplitude.collectAsState()
         val transcript by voiceController.transcript.collectAsState()
-        val musicPlaying = rememberMusicPlaying()
+        val musicService: MusicService = koinInject()
+        val permissionsManager: PermissionsManager = koinInject()
+        val hasMediaAccess by remember {
+            permissionsManager.hasPermission(PermissionGroup.Notifications)
+        }.collectAsState(initial = true)
+        val media by rememberOrbMedia()
 
         // Mirror the assistant's state for the wallpaper layer, which sits outside this tree.
         SideEffect {
@@ -173,6 +189,19 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var orbShape by remember { mutableStateOf(pieRepository.orbShape()) }
         var orbFill by remember { mutableStateOf(pieRepository.orbFill()) }
 
+        // Music: the media ring's layout and skip lengths, the slot under the finger, and the
+        // live spectrum while something plays (stopped while the orb sleeps).
+        var mediaRingEnabled by remember { mutableStateOf(pieRepository.mediaRingEnabled()) }
+        var mediaCoverArt by remember { mutableStateOf(pieRepository.mediaCoverArt()) }
+        var mediaSlots by remember { mutableStateOf(pieRepository.mediaRing()) }
+        var rewindSeconds by remember { mutableIntStateOf(pieRepository.mediaRewindSeconds()) }
+        var forwardSeconds by remember { mutableIntStateOf(pieRepository.mediaForwardSeconds()) }
+        var mediaSelected by remember { mutableStateOf<MediaRingSlot?>(null) }
+        var mediaPromptDismissed by remember { mutableStateOf(pieRepository.mediaAccessPromptDismissed()) }
+        val audio = rememberOrbAudio(enabled = media.playing && !sleeping)
+        val showMediaRing = mediaRingEnabled && media.hasSession &&
+            mediaSlots.values.any { it != MediaRingAction.None }
+
         // Re-read the orb state when the settings activity returns, since it may have been
         // changed there (shape, fill, menu items) or replaced wholesale by a backup restore.
         val lifecycleOwner = LocalLifecycleOwner.current
@@ -181,6 +210,11 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                 if (event == Lifecycle.Event.ON_RESUME) {
                     orbShape = pieRepository.orbShape()
                     orbFill = pieRepository.orbFill()
+                    mediaRingEnabled = pieRepository.mediaRingEnabled()
+                    mediaCoverArt = pieRepository.mediaCoverArt()
+                    mediaSlots = pieRepository.mediaRing()
+                    rewindSeconds = pieRepository.mediaRewindSeconds()
+                    forwardSeconds = pieRepository.mediaForwardSeconds()
                     if (!editMode) {
                         items = pieRepository.items()
                         orbCX = pieRepository.orbCenterX()
@@ -276,6 +310,21 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             }
         }
 
+        fun performMedia(action: MediaRingAction) {
+            when (action) {
+                MediaRingAction.None -> {}
+                MediaRingAction.PlayPause -> musicService.togglePause()
+                MediaRingAction.Previous -> musicService.previous()
+                MediaRingAction.Next -> musicService.next()
+                MediaRingAction.OpenApp -> runCatching {
+                    musicService.openPlayer()?.sendWithBackgroundPermission(context)
+                }
+                MediaRingAction.Rewind -> musicService.seekBy(-rewindSeconds * 1000L)
+                MediaRingAction.Forward -> musicService.seekBy(forwardSeconds * 1000L)
+            }
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+
         // Adds a picked item to the top folder window, or to the pie when none is open.
         fun addItem(item: PieItem) {
             val target = openFolders.lastOrNull()
@@ -335,6 +384,24 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             // belongs to the scaffold's own gestures.
             val confinedRadius = sphereRadius + with(density) { 20.dp.toPx() }
 
+            // The media ring sits a control's width outside the pie, squeezed on any side
+            // where the screen edge (or the system bars) is closer than that.
+            val ringGap = with(density) { 74.dp.toPx() }
+            val ringMargin = with(density) { 34.dp.toPx() }
+            val ringMin = pieRadius + with(density) { 12.dp.toPx() }
+            val ringR = pieRadius + ringGap
+            val topEdge = with(density) { insets.calculateTopPadding().toPx() } + ringMargin
+            val bottomEdge = height - with(density) { insets.calculateBottomPadding().toPx() } - ringMargin
+            val ringGeometry = MediaRingGeometry(
+                center = center,
+                rx = ringR.coerceAtMost(minOf(center.x, width - center.x) - ringMargin)
+                    .coerceAtLeast(ringMin),
+                ryUp = ringR.coerceAtMost(center.y - topEdge).coerceAtLeast(ringMin),
+                ryDown = ringR.coerceAtMost(bottomEdge - center.y).coerceAtLeast(ringMin),
+                pieRadius = pieRadius,
+            )
+            val ringActive = showMediaRing && !sleeping
+
             // Released on a slice: activate it. The dead zone cancels.
             val handleRelease: (Int) -> Unit = { index ->
                 items.getOrNull(index)?.let { activate(it) }
@@ -365,7 +432,10 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         orbRadius = sphereRadius,
                         shape = orbShape,
                         fill = orbFill,
-                        playing = musicPlaying.value,
+                        playing = media.playing,
+                        coverArt = if (mediaCoverArt) media.art else null,
+                        accent = media.accent,
+                        audio = audio,
                     )
                     PieEditMode(
                         items = items,
@@ -423,7 +493,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                             }
                         }
                     }
-                    .pointerInput(sleeping, items, confinedRadius) {
+                    .pointerInput(sleeping, items, confinedRadius, ringActive, ringGeometry, mediaSlots) {
                         var tapCount = 0
                         var tapDebounce: Job? = null
                         // How long a tap waits for a follow-up tap. Only paid when a double or
@@ -502,8 +572,17 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 val up = waitForUpOrCancellation()
                                 pieOpen = false
                                 pieSticky = false
+                                mediaSelected = null
                                 if (up != null) {
                                     up.consume()
+                                    if (ringActive) {
+                                        val slot = mediaRingSelection(up.position, ringGeometry, mediaSlots)
+                                        if (slot != null) {
+                                            selected = -1
+                                            performMedia(mediaSlots.getValue(slot))
+                                            return@awaitEachGesture
+                                        }
+                                    }
                                     val index = pieSelectionIndex(
                                         pointer = up.position,
                                         center = center,
@@ -545,7 +624,11 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                         moved = true
                                     }
                                     if (!sleeping) {
-                                        selected = pieSelectionIndex(
+                                        val slot = if (ringActive) {
+                                            mediaRingSelection(pointer, ringGeometry, mediaSlots)
+                                        } else null
+                                        mediaSelected = slot
+                                        selected = if (slot != null) -1 else pieSelectionIndex(
                                             pointer = pointer,
                                             center = center,
                                             count = items.size,
@@ -565,7 +648,9 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                             }
 
                             val index = if (sleeping) -1 else selected
+                            val mediaSlot = if (sleeping) null else mediaSelected
                             selected = -1
+                            mediaSelected = null
                             if (!wentUp) {
                                 tapCount = 0
                                 return@awaitEachGesture
@@ -575,6 +660,12 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                     viewConfiguration.longPressTimeoutMillis
 
                             when {
+                                // Dragged out to the media ring.
+                                mediaSlot != null && moved -> {
+                                    tapCount = 0
+                                    performMedia(mediaSlots.getValue(mediaSlot))
+                                }
+
                                 // A short press that stayed put is a tap wherever it landed,
                                 // including the orb's rim, which already lies over the slices.
                                 // Without this a tap near the edge launched a slice instead.
@@ -620,7 +711,10 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     orbRadius = sphereRadius,
                     shape = orbShape,
                     fill = orbFill,
-                    playing = musicPlaying.value,
+                    playing = media.playing,
+                    coverArt = if (mediaCoverArt) media.art else null,
+                    accent = media.accent,
+                    audio = audio,
                     pressed = orbPressed,
                     pokeCount = pokeCount,
                     greetCount = greetCount,
@@ -645,6 +739,46 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         selectedIndex = selected,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    if (ringActive) {
+                        MediaRing(
+                            slots = mediaSlots,
+                            geometry = ringGeometry,
+                            selected = mediaSelected,
+                            playing = media.playing,
+                            rewindSeconds = rewindSeconds,
+                            forwardSeconds = forwardSeconds,
+                            accent = media.accent,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
+                // Music is playing but the launcher can't see what: ask for notification access,
+                // which cover art, track info and the media ring need.
+                if (media.playing && !hasMediaAccess && !mediaPromptDismissed &&
+                    orbState == OrbState.Idle
+                ) {
+                    MediaAccessPrompt(
+                        onAllow = {
+                            context.findAppCompatActivity()?.let {
+                                permissionsManager.requestPermission(it, PermissionGroup.Notifications)
+                            }
+                        },
+                        onDismiss = {
+                            mediaPromptDismissed = true
+                            pieRepository.saveMediaAccessPromptDismissed(true)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset {
+                                IntOffset(
+                                    0,
+                                    (center.y + sphereRadius * 1.8f + with(density) {
+                                        8.dp.toPx()
+                                    }).roundToInt(),
+                                )
+                            },
+                    )
                 }
 
                 if (orbState != OrbState.Idle && orbState != OrbState.Pie && orbState != OrbState.Sleep) {
@@ -665,20 +799,33 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                 }
 
                 val label = when {
+                    pieOpen && mediaSelected != null -> mediaSlots[mediaSelected]
+                        ?.hoverLabel(media.playing, rewindSeconds, forwardSeconds)
                     pieOpen && selected in items.indices -> items[selected].label
+                    pieOpen && ringActive && media.title != null ->
+                        listOfNotNull(media.title, media.artist).joinToString(" · ")
                     voiceState is VoiceUiState.Success -> (voiceState as VoiceUiState.Success).message
                     voiceState is VoiceUiState.Error -> (voiceState as VoiceUiState.Error).message
                     voiceState is VoiceUiState.Confirm -> (voiceState as VoiceUiState.Confirm).message
                     else -> null
                 }
                 label?.let {
+                    // On a pill so it stays readable over the clock and any wallpaper.
                     Text(
                         text = it,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = insets.calculateTopPadding() + 48.dp),
+                            .padding(top = insets.calculateTopPadding() + 48.dp)
+                            .padding(horizontal = 24.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+                                RoundedCornerShape(50),
+                            )
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
                     )
                 }
             }
@@ -780,6 +927,15 @@ internal object OrbHomeComponent : ScaffoldComponent() {
     /** Maps a stored widgets-target name to its page, falling back to the default page. */
     private fun widgetsTargetOf(name: String?): WidgetScreenTarget =
         WidgetScreenTarget.entries.firstOrNull { it.name == name } ?: WidgetScreenTarget.Default
+}
+
+private fun Context.findAppCompatActivity(): AppCompatActivity? {
+    var c: Context? = this
+    while (c is ContextWrapper) {
+        if (c is AppCompatActivity) return c
+        c = c.baseContext
+    }
+    return null
 }
 
 /** Generates the stable id used to reference an installed app from the pie. */

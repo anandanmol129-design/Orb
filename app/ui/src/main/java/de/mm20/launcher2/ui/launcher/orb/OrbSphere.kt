@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
@@ -397,9 +398,7 @@ fun OrbSphere(
     val bass: () -> Float = {
         (levels[0] + levels[1] + levels[2] + levels[3]) * 0.25f
     }
-    val wavePath = remember { Path() }
     val waveMeasure = remember { PathMeasure() }
-    val wavePts = remember { FloatArray(WavePoints * 2) }
 
     // Cover art fades in over a filled body; the last art is kept so it can fade back out.
     var shownArt by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -566,27 +565,18 @@ fun OrbSphere(
         // is applied in the body's own frame, then the whole thing is tilted.
         rotate(tiltDeg, pivot = body) {
             scale(sx, sy, pivot = body) {
-                // The reactive edge: the body outline pushed outward per spectrum band.
+                // The reactive edge: columns of dots around the body that grow outward and
+                // fall back with each spectrum band.
                 if (waveAmt > 0.01f) {
-                    buildWave(
-                        out = wavePath,
+                    drawDotRing(
                         measure = waveMeasure,
-                        pts = wavePts,
                         bodyPath = bodyPath,
                         body = body,
                         r = r,
                         levels = levels,
                         amount = waveAmt,
-                        rest = if (fill == OrbFill.Outline) 0f else 0.035f,
+                        color = rim,
                     )
-                    if (fill != OrbFill.Outline) {
-                        drawPath(wavePath, color = rim.copy(alpha = 0.32f * waveAmt))
-                        drawPath(
-                            path = wavePath,
-                            color = rim.copy(alpha = 0.75f * waveAmt),
-                            style = Stroke(width = maxOf(r * 0.022f, 1.5f)),
-                        )
-                    }
                 }
                 when {
                     isSleep -> {
@@ -600,25 +590,12 @@ fun OrbSphere(
                     }
                     fill == OrbFill.Outline -> {
                         // Hollow body: just the edge, so the wallpaper shows through the centre.
-                        // While music plays the edge itself is the visualizer, tinted from the
-                        // cover art.
-                        val edgeWidth = maxOf(r * 0.055f, 2f)
-                        if (waveAmt < 0.99f) {
-                            drawPath(
-                                path = bodyPath,
-                                color = rim,
-                                alpha = 1f - waveAmt,
-                                style = Stroke(width = edgeWidth),
-                            )
-                        }
-                        if (waveAmt > 0.01f) {
-                            drawPath(
-                                path = wavePath,
-                                color = rim,
-                                alpha = waveAmt,
-                                style = Stroke(width = edgeWidth, cap = StrokeCap.Round),
-                            )
-                        }
+                        // While music plays it takes the cover art's colour.
+                        drawPath(
+                            path = bodyPath,
+                            color = rim,
+                            style = Stroke(width = maxOf(r * 0.055f, 2f)),
+                        )
                     }
                     else -> {
                         // Matte white body with the faintest top-left shading for volume.
@@ -820,28 +797,30 @@ private fun blinkSpec(leadMs: Int): KeyframesSpec<Float> = keyframes {
 }
 
 /**
- * Writes into [out] the outline of [bodyPath] pushed outward along its normal by the spectrum:
- * bass at the bottom, highs at the top, mirrored left and right so the shape stays balanced.
- * Allocation-free; [pts] is scratch space for [WavePoints] points.
+ * Draws the music visualizer: [DotColumns] columns of dots standing on the body outline, each
+ * lit outward as far as its spectrum band reaches (bass at the bottom, highs at the top,
+ * mirrored left and right). The innermost dot always glows faintly so the ring reads at rest;
+ * the tip dot fades in and out so the columns grow smoothly. Odd columns sit half a step out
+ * for a sparkling, staggered look. Allocation-free.
  */
-private fun buildWave(
-    out: Path,
+private fun DrawScope.drawDotRing(
     measure: PathMeasure,
-    pts: FloatArray,
     bodyPath: Path,
     body: Offset,
     r: Float,
     levels: FloatArray,
     amount: Float,
-    rest: Float,
+    color: Color,
 ) {
     measure.setPath(bodyPath, true)
     val len = measure.length
-    out.rewind()
     if (len <= 0f) return
     val last = levels.size - 1
-    for (i in 0 until WavePoints) {
-        val d = len * i / WavePoints
+    val gap = r * 0.1f
+    val step = r * 0.075f
+    val dot = r * 0.022f
+    for (i in 0 until DotColumns) {
+        val d = len * i / DotColumns
         val p = measure.getPosition(d)
         val tan = measure.getTangent(d)
         var nx = tan.y
@@ -852,34 +831,32 @@ private fun buildWave(
             nx = -nx
             ny = -ny
         }
-        // 0 at the top of the body, 1 at the bottom, the same on both sides.
+        // 0 at the top of the body, 1 at the bottom, the same on both sides; bass at the bottom.
         val u = abs(atan2(rx, -ry)) / PI.toFloat()
         val f = u * last
         val lo = f.toInt().coerceIn(0, last)
         val hi = (lo + 1).coerceAtMost(last)
-        val frac = f - lo
-        // Bass (band 0) at the bottom: flip so u = 1 reads band 0.
         val a = levels[last - lo]
         val b = levels[last - hi]
-        val level = a + (b - a) * frac
-        val off = r * (rest + 0.3f * level) * amount
-        pts[2 * i] = p.x + nx * off
-        pts[2 * i + 1] = p.y + ny * off
+        val level = a + (b - a) * (f - lo)
+        val lit = level * DotsPerColumn
+        val stagger = if (i % 2 == 1) step * 0.5f else 0f
+        for (k in 0 until DotsPerColumn) {
+            val on = if (k == 0) maxOf(0.3f, lit.coerceAtMost(1f)) else (lit - k).coerceIn(0f, 1f)
+            if (on <= 0.01f) break
+            val off = gap + stagger + k * step
+            drawCircle(
+                color = color,
+                radius = dot * (1f - 0.07f * k),
+                center = Offset(p.x + nx * off, p.y + ny * off),
+                alpha = on * amount,
+            )
+        }
     }
-    // Smooth closed curve through the midpoints.
-    val n = WavePoints
-    out.moveTo((pts[2 * (n - 1)] + pts[0]) / 2f, (pts[2 * (n - 1) + 1] + pts[1]) / 2f)
-    for (i in 0 until n) {
-        val j = (i + 1) % n
-        out.quadraticTo(
-            pts[2 * i], pts[2 * i + 1],
-            (pts[2 * i] + pts[2 * j]) / 2f, (pts[2 * i + 1] + pts[2 * j + 1]) / 2f,
-        )
-    }
-    out.close()
 }
 
-private const val WavePoints = 96
+private const val DotColumns = 72
+private const val DotsPerColumn = 6
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

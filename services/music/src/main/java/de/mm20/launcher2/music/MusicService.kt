@@ -115,10 +115,15 @@ internal class MusicServiceImpl(
                     settings.allowList,
                     settings.denyList,
                 )
-                val sbn: Notification = notifications.filter {
-                    musicApps.contains(it.packageName) &&
-                        (it.mediaSessionToken != null || it.isMediaStyle)
-                }.maxByOrNull { it.postTime }
+                val media = notifications.filter {
+                    (it.mediaSessionToken != null || it.isMediaStyle) &&
+                        it.packageName !in settings.denyList
+                }
+                // Known players first; otherwise any app showing media controls, since many
+                // players never declare themselves as music apps.
+                val sbn: Notification = (media.filter { musicApps.contains(it.packageName) }
+                    .ifEmpty { media })
+                    .maxByOrNull { it.postTime }
                     ?: return@withContext null
 
                 // Notifications read back in bulk when the listener (re)connects can come without

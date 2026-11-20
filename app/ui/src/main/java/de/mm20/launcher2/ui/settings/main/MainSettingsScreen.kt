@@ -1,6 +1,10 @@
 package de.mm20.launcher2.ui.settings.main
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.navigation3.runtime.NavKey
 import de.mm20.launcher2.ui.R
@@ -27,6 +31,7 @@ data object MainRoute: NavKey
 @Composable
 fun MainSettingsScreen() {
     val backStack = LocalBackStack.current
+    val context = LocalContext.current
     PreferenceScreen(
         title = stringResource(R.string.settings),
     ) {
@@ -122,5 +127,31 @@ fun MainSettingsScreen() {
                 )
             }
         }
+        item {
+            PreferenceCategory {
+                Preference(
+                    icon = R.drawable.restart_alt_24px,
+                    title = stringResource(id = R.string.preference_restart_launcher),
+                    summary = stringResource(id = R.string.preference_restart_launcher_summary),
+                    onClick = { restartLauncher(context) }
+                )
+            }
+        }
     }
+}
+/**
+ * Does what force stopping Orb and reopening it does: ends the whole process, so every bit of
+ * in-memory state (stuck gestures, half-finished page transitions) starts over, then brings the
+ * home screen back. Settings and the orb's layout are stored on disk and survive.
+ */
+private fun restartLauncher(context: Context) {
+    val home = Intent(Intent.ACTION_MAIN)
+        .addCategory(Intent.CATEGORY_HOME)
+        .setPackage(context.packageName)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    // The system already holds this start request, so it brings the home screen up in a
+    // fresh process once this one is gone.
+    context.startActivity(home)
+    (context as? Activity)?.finishAffinity()
+    Runtime.getRuntime().exit(0)
 }

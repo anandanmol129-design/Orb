@@ -64,6 +64,13 @@ class VoiceController(
     /** Pending finalize that fires after [SILENCE_TIMEOUT_MS] of a flat transcript. */
     private var silenceJob: Job? = null
 
+    /**
+     * Gives up on a session in which no words have been recognised for [NO_WORDS_TIMEOUT_MS].
+     * Background noise keeps the recognizer listening indefinitely, so its own end-of-speech
+     * timeout can't be relied on to stop it.
+     */
+    private var noWordsJob: Job? = null
+
     private val speaker = Speaker(context)
 
     fun startListening() {
@@ -99,6 +106,8 @@ class VoiceController(
         confirmation = null
         silenceJob?.cancel()
         silenceJob = null
+        noWordsJob?.cancel()
+        noWordsJob = null
         activeSession++
         recognizer?.cancel()
         recognizer?.destroy()
@@ -145,6 +154,20 @@ class VoiceController(
             )
         }
         recognizer?.startListening(intent)
+        armNoWordsWatchdog()
+    }
+
+    /** (Re)starts the countdown that closes the session if no words arrive in time. */
+    private fun armNoWordsWatchdog() {
+        noWordsJob?.cancel()
+        noWordsJob = scope.launch {
+            delay(NO_WORDS_TIMEOUT_MS)
+            noWordsJob = null
+            if (_state.value == VoiceUiState.Listening) {
+                android.util.Log.d("OrbVoice", "no words for ${NO_WORDS_TIMEOUT_MS}ms, closing")
+                cancel()
+            }
+        }
     }
 
     /**
@@ -198,6 +221,8 @@ class VoiceController(
             if (!current()) return
             silenceJob?.cancel()
             silenceJob = null
+            noWordsJob?.cancel()
+            noWordsJob = null
             val message = when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH,
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that."
@@ -217,6 +242,8 @@ class VoiceController(
             if (!current()) return
             silenceJob?.cancel()
             silenceJob = null
+            noWordsJob?.cancel()
+            noWordsJob = null
             val text = results
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
@@ -243,6 +270,8 @@ class VoiceController(
             android.util.Log.d("OrbTranscript", "onPartialResults text=$text")
             if (!text.isNullOrEmpty() && text != _transcript.value) {
                 _transcript.value = text
+                // Words are coming in: restart the no-words countdown from here.
+                armNoWordsWatchdog()
                 // The transcript is still growing: the user is mid-command. Hold off the
                 // end-of-utterance timer until they pause.
                 armSilenceWatchdog()
@@ -336,6 +365,9 @@ class VoiceController(
     private companion object {
         /** How long to wait after the transcript stops growing before finishing the utterance. */
         private const val SILENCE_TIMEOUT_MS = 1_000L
+
+        /** How long a session may go without any recognised words before it closes itself. */
+        private const val NO_WORDS_TIMEOUT_MS = 3_000L
     }
 }
 

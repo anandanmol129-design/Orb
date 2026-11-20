@@ -261,6 +261,13 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             BackHandler { editMode = false }
         }
 
+        // Back stops the assistant while it is listening, in case it was started by accident.
+        val voiceListening = voiceState == VoiceUiState.Listening || voiceState is VoiceUiState.Confirm
+        BackHandler(enabled = voiceListening) { voiceController.cancel() }
+
+        // Back closes the top folder window, one level at a time.
+        BackHandler(enabled = openFolders.isNotEmpty()) { openFolders = openFolders.dropLast(1) }
+
         fun startVoice() {
             if (ContextCompat.checkSelfPermission(
                     context,
@@ -873,6 +880,8 @@ internal object OrbHomeComponent : ScaffoldComponent() {
 
             val openFolder = openFolders.lastOrNull()?.let { findFolder(items, it) }
             if (openFolder != null) {
+                // Above the clock and dock layer, which otherwise draws over the window.
+                Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
                 OrbFolderView(
                     folder = openFolder,
                     onOpen = { activate(it) },
@@ -888,6 +897,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     },
                     onDismiss = { openFolders = openFolders.dropLast(1) },
                 )
+                }
             }
 
             if (showAppPicker) {

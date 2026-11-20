@@ -65,6 +65,7 @@ internal fun GesturePreference(
     options: Set<KClass<out GestureAction>>,
     shortcutOptions: List<SavableSearchable>,
     widgetOptions: List<WidgetPageOption>,
+    folderOptions: List<OrbFolderOption> = emptyList(),
 ) {
     var showSheet by remember { mutableStateOf(false) }
 
@@ -94,7 +95,7 @@ internal fun GesturePreference(
 
     Preference(
         title = title,
-        summary = getActionLabel(LocalResources.current, value, shortcutOptions),
+        summary = getActionLabel(LocalResources.current, value, shortcutOptions, folderOptions),
         icon = icon,
         onClick = {
             showSheet = true
@@ -142,21 +143,11 @@ internal fun GesturePreference(
                             )
                         }
                     }
-                    item {
-                        PreferenceCategory(
-                            title = stringResource(R.string.gesture_action_category_launcher)
-                        ) {
-                            if (options.contains(GestureAction.Search::class)) {
-                                GestureItem(
-                                    title = stringResource(R.string.gesture_action_open_search),
-                                    icon = R.drawable.search_24px,
-                                    selected = value is GestureAction.Search,
-                                    onClick = {
-                                        onValueChanged(GestureAction.Search, null)
-                                        showSheet = false
-                                    }
-                                )
-                            }
+                    if (options.contains(GestureAction.OpenPie::class)) {
+                        item {
+                            PreferenceCategory(
+                                title = stringResource(R.string.gesture_action_category_orb)
+                            ) {
                             if (options.contains(GestureAction.OpenPie::class)) {
                                 GestureItem(
                                     title = stringResource(R.string.gesture_action_open_pie),
@@ -186,6 +177,71 @@ internal fun GesturePreference(
                                     selected = value is GestureAction.ToggleFill,
                                     onClick = {
                                         onValueChanged(GestureAction.ToggleFill, null)
+                                        showSheet = false
+                                    }
+                                )
+                            }
+                            if (options.contains(GestureAction.Voice::class)) {
+                                GestureItem(
+                                    title = stringResource(R.string.gesture_action_voice),
+                                    icon = R.drawable.ic_mic,
+                                    selected = value is GestureAction.Voice,
+                                    onClick = {
+                                        onValueChanged(GestureAction.Voice, null)
+                                        showSheet = false
+                                    }
+                                )
+                            }
+                            if (options.contains(GestureAction.ToggleEditMode::class)) {
+                                GestureItem(
+                                    title = stringResource(R.string.gesture_action_toggle_edit_mode),
+                                    icon = R.drawable.edit_24px,
+                                    selected = value is GestureAction.ToggleEditMode,
+                                    onClick = {
+                                        onValueChanged(GestureAction.ToggleEditMode, null)
+                                        showSheet = false
+                                    }
+                                )
+                            }
+                            if (options.contains(GestureAction.OrbSettings::class)) {
+                                GestureItem(
+                                    title = stringResource(R.string.gesture_action_orb_settings),
+                                    icon = R.drawable.tune_24px,
+                                    selected = value is GestureAction.OrbSettings,
+                                    onClick = {
+                                        onValueChanged(GestureAction.OrbSettings, null)
+                                        showSheet = false
+                                    }
+                                )
+                            }
+                            if (options.contains(GestureAction.OpenFolder::class)) {
+                                for (folder in folderOptions) {
+                                    GestureItem(
+                                        title = folder.label,
+                                        summary = stringResource(R.string.gesture_action_folder_summary),
+                                        icon = R.drawable.folder_24px,
+                                        selected = value is GestureAction.OpenFolder && value.id == folder.id,
+                                        onClick = {
+                                            onValueChanged(GestureAction.OpenFolder(folder.id), null)
+                                            showSheet = false
+                                        }
+                                    )
+                                }
+                            }
+                            }
+                        }
+                    }
+                    item {
+                        PreferenceCategory(
+                            title = stringResource(R.string.gesture_action_category_launcher)
+                        ) {
+                            if (options.contains(GestureAction.Search::class)) {
+                                GestureItem(
+                                    title = stringResource(R.string.gesture_action_open_search),
+                                    icon = R.drawable.search_24px,
+                                    selected = value is GestureAction.Search,
+                                    onClick = {
+                                        onValueChanged(GestureAction.Search, null)
                                         showSheet = false
                                     }
                                 )
@@ -431,7 +487,8 @@ private fun GestureItem(
 private fun getActionLabel(
     resources: Resources,
     action: GestureAction?,
-    shortcutOptions: List<SavableSearchable>
+    shortcutOptions: List<SavableSearchable>,
+    folderOptions: List<OrbFolderOption> = emptyList(),
 ): String {
     return when (action) {
         GestureAction.Feed -> resources.getString(R.string.gesture_action_feed)
@@ -450,6 +507,11 @@ private fun getActionLabel(
         GestureAction.OpenPie -> resources.getString(R.string.gesture_action_open_pie)
         GestureAction.ToggleSleep -> resources.getString(R.string.gesture_action_toggle_sleep)
         GestureAction.ToggleFill -> resources.getString(R.string.gesture_action_toggle_fill)
+        GestureAction.ToggleEditMode -> resources.getString(R.string.gesture_action_toggle_edit_mode)
+        GestureAction.Voice -> resources.getString(R.string.gesture_action_voice)
+        GestureAction.OrbSettings -> resources.getString(R.string.gesture_action_orb_settings)
+        is GestureAction.OpenFolder -> folderOptions.find { it.id == action.id }?.label
+            ?: resources.getString(R.string.gesture_action_folder_missing)
         GestureAction.LauncherSettings -> resources.getString(R.string.settings)
         is GestureAction.Widgets -> {
             when (action.target) {

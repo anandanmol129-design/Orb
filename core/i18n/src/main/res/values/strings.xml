@@ -922,6 +922,13 @@
     <string name="gesture_action_open_pie">Open pie menu</string>
     <string name="gesture_action_toggle_sleep">Toggle sleep</string>
     <string name="gesture_action_toggle_fill">Toggle fill</string>
+    <string name="gesture_action_toggle_edit_mode">Toggle edit mode</string>
+    <string name="gesture_action_category_orb">Orb</string>
+    <string name="gesture_action_voice">Voice assistant</string>
+    <string name="gesture_action_orb_settings">Orb settings</string>
+    <string name="gesture_action_open_folder">Open folder</string>
+    <string name="gesture_action_folder_summary">Folder</string>
+    <string name="gesture_action_folder_missing">Folder (removed)</string>
     <string name="gesture_failed_message">You have performed a \"%1$s\" gesture. This gesture is currently set to trigger a \"%2$s\" action. However, the action could not be performed for the following reason:</string>
     <string name="missing_permission_accessibility_gesture_failed">The launcher\'s accessibility service needs to be enabled to perform this action.</string>
     <string name="missing_permission_accessibility_gesture_settings">This action requires the launcher\'s accessibility service to be enabled.</string>

@@ -11,7 +11,7 @@ import java.util.UUID
 @Serializable
 @ConsistentCopyVisibility
 data class LauncherSettingsData internal constructor(
-    val schemaVersion: Int = 8,
+    val schemaVersion: Int = 9,
 
     val uiColorScheme: ColorScheme = ColorScheme.System,
     @Serializable(with = UUIDSerializer::class)
@@ -161,7 +161,7 @@ data class LauncherSettingsData internal constructor(
 
     val gesturesTap: GestureAction = GestureAction.Search,
     val gesturesDoubleTap: GestureAction = GestureAction.NoAction,
-    val gesturesTripleTap: GestureAction = GestureAction.ToggleFill,
+    val gesturesTripleTap: GestureAction = GestureAction.ToggleEditMode,
     val gesturesLongPress: GestureAction = GestureAction.OpenPie,
     val gesturesHomeButton: GestureAction = GestureAction.NoAction,
 
@@ -511,6 +511,23 @@ sealed interface GestureAction {
     @Serializable
     @SerialName("toggle_fill")
     data object ToggleFill : GestureAction
+
+    @Serializable
+    @SerialName("toggle_edit_mode")
+    data object ToggleEditMode : GestureAction
+
+    /** Opens one of the orb's folders; [id] is the folder's pie item id. */
+    @Serializable
+    @SerialName("open_orb_folder")
+    data class OpenFolder(val id: String) : GestureAction
+
+    @Serializable
+    @SerialName("orb_voice")
+    data object Voice : GestureAction
+
+    @Serializable
+    @SerialName("orb_settings")
+    data object OrbSettings : GestureAction
 }
 
 

@@ -261,6 +261,18 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             BackHandler { editMode = false }
         }
 
+        fun startVoice() {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO,
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                voiceController.startListening()
+            } else {
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+
         // Launches or opens whatever was picked. Pie slices and folder entries share this.
         fun activate(item: PieItem) {
             scope.launch {
@@ -274,17 +286,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         launchShortcut(context, item)
 
                     is PieItem.Action -> when (item.type) {
-                        PieActionType.Voice -> {
-                            if (ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO,
-                                ) == PackageManager.PERMISSION_GRANTED
-                            ) {
-                                voiceController.startListening()
-                            } else {
-                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            }
-                        }
+                        PieActionType.Voice -> startVoice()
 
                         PieActionType.Search -> state.openSearch()
 
@@ -472,6 +474,16 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                             pieRepository.saveOrbLayout(orbCX, orbCY, orbScale)
                         },
                         onDragStateChange = { draggingIcon = it },
+                        exitTaps = when {
+                            tripleTapAction is GestureAction.ToggleEditMode -> 3
+                            doubleTapAction is GestureAction.ToggleEditMode -> 2
+                            tapAction is GestureAction.ToggleEditMode -> 1
+                            else -> 0
+                        },
+                        onExit = {
+                            editMode = false
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
                     )
                     EditModeActions(
                         dragging = draggingIcon,
@@ -546,9 +558,32 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 }
 
                                 sleeping && action !is GestureAction.ToggleSleep -> {}
+                                action is GestureAction.ToggleEditMode -> {
+                                    editMode = true
+                                    openFolders = emptyList()
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+
                                 action is GestureAction.ToggleSleep -> {
                                     sleeping = !sleeping
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+
+                                action is GestureAction.Voice -> startVoice()
+
+                                action is GestureAction.OrbSettings -> context.startActivity(
+                                    Intent(context, OrbSettingsActivity::class.java)
+                                )
+
+                                action is GestureAction.OpenFolder -> {
+                                    if (findFolder(items, action.id) != null) {
+                                        openFolders = listOf(action.id)
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    } else {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("That folder no longer exists")
+                                        }
+                                    }
                                 }
 
                                 action is GestureAction.OpenPie -> {

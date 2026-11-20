@@ -14,6 +14,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +29,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavKey
+import de.mm20.launcher2.orb.pie.PieItem
+import de.mm20.launcher2.orb.pie.PieRepository
+import org.koin.compose.koinInject
 import de.mm20.launcher2.FeatureFlags
 import de.mm20.launcher2.icons.LauncherIcon
 import de.mm20.launcher2.ktx.isAtLeastApiLevel
@@ -76,7 +83,26 @@ fun GestureSettingsScreen() {
     val orbOptions = options +
             GestureAction.OpenPie::class +
             GestureAction.ToggleSleep::class +
-            GestureAction.ToggleFill::class
+            GestureAction.ToggleFill::class +
+            GestureAction.ToggleEditMode::class +
+            GestureAction.OpenFolder::class +
+            GestureAction.Voice::class +
+            GestureAction.OrbSettings::class
+
+    // The orb's folders, at any depth, for "Open folder". Re-read whenever the screen
+    // resumes, since folders are edited on the home screen.
+    val pieRepository: PieRepository = koinInject()
+    var folderOptions by remember { mutableStateOf(emptyList<OrbFolderOption>()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                folderOptions = orbFolderOptions(pieRepository.items())
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
 
     val context = LocalContext.current
@@ -97,6 +123,7 @@ fun GestureSettingsScreen() {
                         options = orbOptions,
                         shortcutOptions = shortcutOptions,
                         widgetOptions = widgetOptions,
+                        folderOptions = folderOptions,
                     )
                 }
 
@@ -114,6 +141,7 @@ fun GestureSettingsScreen() {
                         options = orbOptions,
                         shortcutOptions = shortcutOptions,
                         widgetOptions = widgetOptions,
+                        folderOptions = folderOptions,
                     )
                 }
 
@@ -131,6 +159,7 @@ fun GestureSettingsScreen() {
                         options = orbOptions,
                         shortcutOptions = shortcutOptions,
                         widgetOptions = widgetOptions,
+                        folderOptions = folderOptions,
                     )
                 }
 
@@ -148,6 +177,7 @@ fun GestureSettingsScreen() {
                         options = orbOptions,
                         shortcutOptions = shortcutOptions,
                         widgetOptions = widgetOptions,
+                        folderOptions = folderOptions,
                     )
                 }
 
@@ -183,3 +213,12 @@ fun requiresAccessibilityService(action: GestureAction?): Boolean {
     }
 }
 
+
+/** A folder in the orb's pie, labelled with its parent folders (e.g. "Work › Docs"). */
+data class OrbFolderOption(val id: String, val label: String)
+
+private fun orbFolderOptions(items: List<PieItem>, prefix: String = ""): List<OrbFolderOption> =
+    items.filterIsInstance<PieItem.Folder>().flatMap { folder ->
+        val label = prefix + folder.label
+        listOf(OrbFolderOption(folder.id, label)) + orbFolderOptions(folder.children, "$label › ")
+    }

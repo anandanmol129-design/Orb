@@ -47,6 +47,10 @@ fun FailedGestureSheet(
             is GestureAction.OpenPie -> R.string.gesture_action_open_pie
             is GestureAction.ToggleSleep -> R.string.gesture_action_toggle_sleep
             is GestureAction.ToggleFill -> R.string.gesture_action_toggle_fill
+            is GestureAction.ToggleEditMode -> R.string.gesture_action_toggle_edit_mode
+            is GestureAction.OpenFolder -> R.string.gesture_action_open_folder
+            is GestureAction.Voice -> R.string.gesture_action_voice
+            is GestureAction.OrbSettings -> R.string.gesture_action_orb_settings
             else -> R.string.gesture_action_none
         })
         val gestureName = stringResource(when (it.gesture) {

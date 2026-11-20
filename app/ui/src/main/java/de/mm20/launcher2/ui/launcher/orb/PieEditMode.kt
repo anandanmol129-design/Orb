@@ -66,6 +66,9 @@ fun PieEditMode(
     onCenterYChange: (Float) -> Unit,
     onDragStateChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    // Taps on the orb that leave edit mode (the count bound to "Toggle edit mode"); 0 = off.
+    exitTaps: Int = 0,
+    onExit: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     val handlePx = with(density) { 32.dp.toPx() }
@@ -83,6 +86,8 @@ fun PieEditMode(
     val currentBottomInset = rememberUpdatedState(bottomInsetPx)
     val currentScreenHeight = rememberUpdatedState(screenHeight)
     val currentTrashCenter = rememberUpdatedState(trashCenter)
+    val currentExitTaps = rememberUpdatedState(exitTaps)
+    val currentOnExit = rememberUpdatedState(onExit)
 
     var dragIndex by remember { mutableStateOf(-1) }
     var dragPos by remember { mutableStateOf(Offset.Zero) }
@@ -94,6 +99,10 @@ fun PieEditMode(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(items) {
+                    // Consecutive quick taps on the orb, for leaving edit mode by gesture.
+                    var tapCount = 0
+                    var lastTapUp = 0L
+                    val multiTapWindow = viewConfiguration.doubleTapTimeoutMillis
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val c = currentCenter.value
@@ -122,17 +131,44 @@ fun PieEditMode(
                             }
 
                             EditDragMode.Move -> {
+                                if (down.uptimeMillis - lastTapUp > multiTapWindow) tapCount = 0
+                                // With a tap gesture bound, the orb only moves once the finger
+                                // passes touch slop, so a tap doesn't nudge it.
+                                var moved = currentExitTaps.value <= 0
+                                var upTime = -1L
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                    val rNow = currentSphere.value
-                                    val newY = change.position.y.coerceIn(
-                                        currentTopInset.value + rNow,
-                                        currentScreenHeight.value - currentBottomInset.value - rNow,
-                                    )
-                                    onCenterYChange(newY)
+                                    if (!moved && (change.position - down.position).getDistance() >
+                                        viewConfiguration.touchSlop
+                                    ) {
+                                        moved = true
+                                    }
+                                    if (moved) {
+                                        val rNow = currentSphere.value
+                                        val newY = change.position.y.coerceIn(
+                                            currentTopInset.value + rNow,
+                                            currentScreenHeight.value - currentBottomInset.value - rNow,
+                                        )
+                                        onCenterYChange(newY)
+                                    }
                                     change.consume()
-                                    if (!change.pressed) break
+                                    if (!change.pressed) {
+                                        upTime = change.uptimeMillis
+                                        break
+                                    }
+                                }
+                                val isTap = !moved && upTime >= 0 &&
+                                    upTime - down.uptimeMillis <= viewConfiguration.longPressTimeoutMillis
+                                if (isTap && currentExitTaps.value > 0) {
+                                    tapCount++
+                                    lastTapUp = upTime
+                                    if (tapCount >= currentExitTaps.value) {
+                                        tapCount = 0
+                                        currentOnExit.value()
+                                    }
+                                } else {
+                                    tapCount = 0
                                 }
                             }
 

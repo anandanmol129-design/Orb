@@ -290,6 +290,10 @@ abstract class SharedLauncherActivity(
                                             if (action is GestureAction.OpenPie ||
                                                 action is GestureAction.ToggleSleep ||
                                                 action is GestureAction.ToggleFill ||
+                                                action is GestureAction.ToggleEditMode ||
+                                                action is GestureAction.OpenFolder ||
+                                                action is GestureAction.Voice ||
+                                                action is GestureAction.OrbSettings ||
                                                 action is GestureAction.NoAction
                                             ) {
                                                 return null

@@ -69,7 +69,9 @@ import de.mm20.launcher2.orb.pie.PieRepository
 import de.mm20.launcher2.preferences.GestureAction
 import de.mm20.launcher2.preferences.WidgetScreenTarget
 import de.mm20.launcher2.preferences.ui.GestureSettings
+import androidx.lifecycle.viewmodel.compose.viewModel
 import de.mm20.launcher2.ui.launcher.scaffold.Gesture
+import de.mm20.launcher2.ui.launcher.search.SearchVM
 import de.mm20.launcher2.ui.launcher.scaffold.LauncherScaffoldState
 import de.mm20.launcher2.ui.launcher.scaffold.components.ScaffoldComponent
 import de.mm20.launcher2.ui.settings.orb.OrbSettingsActivity
@@ -235,6 +237,21 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                 voiceController.startListening()
             } else {
                 scope.launch { snackbarHostState.showSnackbar("Microphone permission is required") }
+            }
+        }
+
+        // Several contacts matched a spoken call: show them in search to pick from. The
+        // query is set once search is open, since opening it clears the previous query.
+        // Runs in the screen's scope rather than this effect's, the same way the pie's Search
+        // slice opens search.
+        val searchVM: SearchVM = viewModel()
+        LaunchedEffect(Unit) {
+            voiceController.searchRequests.collect { query ->
+                scope.launch {
+                    state.openSearch()
+                    searchVM.search(query)
+                    state.isSearchBarFocused = false
+                }
             }
         }
 

@@ -17,8 +17,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
@@ -52,6 +55,13 @@ class VoiceController(
     /** Live partial transcript of what the user is saying. */
     private val _transcript = MutableStateFlow("")
     val transcript: StateFlow<String> = _transcript.asStateFlow()
+
+    /**
+     * Queries the launcher should open its search for, so the user can pick between
+     * several matching contacts (each listed with its call and WhatsApp buttons).
+     */
+    private val _searchRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val searchRequests: SharedFlow<String> = _searchRequests.asSharedFlow()
 
     private var recognizer: SpeechRecognizer? = null
 
@@ -327,7 +337,7 @@ class VoiceController(
                 "I didn't understand that."
             } else {
                 "I can open apps, set timers and alarms, toggle the flashlight, and search. " +
-                    "I can also call a contact or open their WhatsApp video-call action. " +
+                    "I can also call a contact, or call, video call or message them on WhatsApp. " +
                     "Enable cloud commands for more."
             }
             _state.value = VoiceUiState.Error(message)
@@ -343,6 +353,8 @@ class VoiceController(
         when (val result = registry.invoke(invocation.name, invocation.args)) {
             is ToolResult.Success -> {
                 android.util.Log.d("OrbVoice", "result=Success ${result.message}")
+                (result.data[LauncherToolsPlugin.SHOW_SEARCH_KEY] as? JsonPrimitive)?.content
+                    ?.let { _searchRequests.tryEmit(it) }
                 _state.value = VoiceUiState.Success(result.message)
                 result.message?.let { speaker.speak(it) }
             }

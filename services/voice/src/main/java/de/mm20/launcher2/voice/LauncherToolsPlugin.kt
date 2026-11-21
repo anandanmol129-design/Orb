@@ -84,14 +84,28 @@ class LauncherToolsPlugin(
         ),
         ToolSpec(
             name = "orb.calls.phone",
-            description = "Call a person using the phone app. Ask for spoken confirmation before opening the dialer.",
+            description = "Call a person using the phone app.",
             parameters = Schema.obj(
                 "contact" to Schema.string("Person's name or phone number.", required = true),
             ),
         ),
         ToolSpec(
+            name = "orb.calls.whatsapp_voice",
+            description = "Start a WhatsApp voice call to a contact.",
+            parameters = Schema.obj(
+                "contact" to Schema.string("Person's name.", required = true),
+            ),
+        ),
+        ToolSpec(
             name = "orb.calls.whatsapp_video",
-            description = "Start a WhatsApp video call to a contact. Ask for spoken confirmation first.",
+            description = "Start a WhatsApp video call to a contact.",
+            parameters = Schema.obj(
+                "contact" to Schema.string("Person's name.", required = true),
+            ),
+        ),
+        ToolSpec(
+            name = "orb.calls.whatsapp_chat",
+            description = "Open a WhatsApp chat with a contact.",
             parameters = Schema.obj(
                 "contact" to Schema.string("Person's name.", required = true),
             ),
@@ -105,25 +119,29 @@ class LauncherToolsPlugin(
         "orb.system.set_timer" -> setTimer(args)
         "orb.system.set_alarm" -> setAlarm(args)
         "orb.calls.phone" -> phoneCall(args)
-        "orb.calls.whatsapp_video" -> whatsappVideoCall(args)
+        "orb.calls.whatsapp_voice" -> whatsapp(args, WhatsAppAction.Voice)
+        "orb.calls.whatsapp_video" -> whatsapp(args, WhatsAppAction.Video)
+        "orb.calls.whatsapp_chat" -> whatsapp(args, WhatsAppAction.Chat)
         else -> ToolResult.Error("Unknown tool: $name")
     }
 
     private suspend fun phoneCall(args: JsonObject): ToolResult {
         val target = args.string("contact")?.trim().orEmpty()
         if (target.isBlank()) return ToolResult.Error("Who should I call?")
-        val isPhoneNumber = target.filter(Char::isDigit).length >= 7
-        val contact = if (isPhoneNumber) null else resolveContact(target)
-        val number = if (contact == null && isPhoneNumber) {
-            target
+        val number: String
+        val name: String
+        if (target.filter(Char::isDigit).length >= 7) {
+            number = target
+            name = target
         } else {
-            contact?.phoneNumbers?.firstOrNull()?.number
-        } ?: return ToolResult.Error("I couldn't find a phone number for $target.")
-
-        if (args.boolean("confirmed") != true) {
-            return ToolResult.ConfirmationRequired(
-                "Call ${contact?.name ?: target} at $number? Say yes to continue."
-            )
+            val contact = when (val match = resolveContact(target)) {
+                is ContactMatch.One -> match.contact
+                is ContactMatch.Several -> return showOptions(target)
+                ContactMatch.None -> return ToolResult.Error("I couldn't find $target in your contacts.")
+            }
+            number = contact.phoneNumbers.firstOrNull()?.number
+                ?: return ToolResult.Error("${contact.name} has no phone number.")
+            name = contact.name
         }
         val canPlaceCall = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CALL_PHONE) ==
             PackageManager.PERMISSION_GRANTED
@@ -134,40 +152,37 @@ class LauncherToolsPlugin(
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return startIntent(
             intent,
-            if (canPlaceCall) "Calling ${contact?.name ?: target}."
-            else "Opening the phone dialer for ${contact?.name ?: target}.",
+            if (canPlaceCall) "Calling $name." else "Opening the phone dialer for $name.",
         )
     }
 
-    private suspend fun whatsappVideoCall(args: JsonObject): ToolResult {
+    private suspend fun whatsapp(args: JsonObject, action: WhatsAppAction): ToolResult {
         val target = args.string("contact")?.trim().orEmpty()
-        if (target.isBlank()) return ToolResult.Error("Who should I video call?")
-        val contact = resolveContact(target)
-            ?: return ToolResult.Error("I couldn't find $target in your enabled contacts.")
-
-        if (args.boolean("confirmed") != true) {
-            return ToolResult.ConfirmationRequired(
-                "Video call ${contact.name} on WhatsApp? Say yes to continue."
-            )
+        if (target.isBlank()) return ToolResult.Error("Who should I contact on WhatsApp?")
+        val contact = when (val match = resolveContact(target)) {
+            is ContactMatch.One -> match.contact
+            is ContactMatch.Several -> return showOptions(target)
+            ContactMatch.None -> return ToolResult.Error("I couldn't find $target in your contacts.")
         }
 
-        val directAction = contact.customActions.firstOrNull { action ->
-            action.packageName in WHATSAPP_PACKAGES &&
-                action.mimeType?.contains("video.call", ignoreCase = true) == true
+        // WhatsApp adds its own rows to each contact it knows (message, voice call, video
+        // call); opening one of those goes straight to the chat or call.
+        val direct = contact.customActions.firstOrNull { custom ->
+            custom.packageName in WHATSAPP_PACKAGES &&
+                custom.mimeType?.endsWith(action.mimeTypeSuffix, ignoreCase = true) == true
         }
-        if (directAction != null) {
+        if (direct != null) {
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(directAction.uri, directAction.mimeType)
-                setPackage(directAction.packageName)
+                setDataAndType(direct.uri, direct.mimeType)
+                setPackage(direct.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            return startIntent(intent, "Opening a WhatsApp video call with ${contact.name}.")
+            return startIntent(intent, action.success(contact.name))
         }
 
-        val number = contact.phoneNumbers.firstOrNull()?.number
-            ?: return ToolResult.Error("I couldn't find a phone number for ${contact.name}.")
-        val digits = number.filter(Char::isDigit)
-        if (digits.length < 7) return ToolResult.Error("I couldn't use ${contact.name}'s saved number for WhatsApp.")
+        // Not on WhatsApp as far as the contacts app knows: fall back to the chat by number.
+        val digits = contact.phoneNumbers.firstOrNull()?.number?.filter(Char::isDigit).orEmpty()
+        if (digits.length < 7) return ToolResult.Error("${contact.name} has no number WhatsApp can use.")
         val whatsappPackage = WHATSAPP_PACKAGES.firstOrNull { packageName ->
             try {
                 context.packageManager.getPackageInfo(packageName, 0)
@@ -182,17 +197,36 @@ class LauncherToolsPlugin(
         }
         return startIntent(
             intent,
-            "Opening ${contact.name}'s WhatsApp chat. Tap the video call button to start the call.",
+            if (action == WhatsAppAction.Chat) action.success(contact.name)
+            else "Opening ${contact.name}'s WhatsApp chat. Tap call there to start it.",
         )
     }
 
-    private suspend fun resolveContact(query: String): Contact? {
+    /**
+     * Asks the launcher to show its search for [query], where every matching contact is
+     * listed with its call and WhatsApp buttons, so the user can pick the right one.
+     */
+    private fun showOptions(query: String): ToolResult = ToolResult.Success(
+        data = buildJsonObject { put(SHOW_SEARCH_KEY, JsonPrimitive(query)) },
+        message = "Which $query?",
+    )
+
+    /**
+     * Finds the contact the user meant by [query].
+     *
+     * Only acts on a sure match: a contact whose whole name is what was said, or, failing
+     * that, the only contact whose first two names are the first two names said. A single
+     * word ("Priyanshu") or two words shared by several contacts ("JSS Priyanshu") is
+     * ambiguous, and the user picks from the list instead.
+     */
+    private suspend fun resolveContact(query: String): ContactMatch {
         val matches = withTimeoutOrNull(CONTACT_LOOKUP_TIMEOUT_MS) {
             contacts.search(query, allowNetwork = false).first { it.isNotEmpty() }
         }.orEmpty()
-        return matches.firstOrNull { it.name.equals(query, ignoreCase = true) }
-            ?: matches.firstOrNull { it.name.startsWith(query, ignoreCase = true) }
-            ?: matches.firstOrNull { it.name.contains(query, ignoreCase = true) }
+        if (matches.isEmpty()) return ContactMatch.None
+        return pickContact(query, matches) { it.name }
+            ?.let { ContactMatch.One(it) }
+            ?: ContactMatch.Several
     }
 
     private suspend fun openApp(args: JsonObject): ToolResult {
@@ -286,8 +320,49 @@ class LauncherToolsPlugin(
         }
     }
 
-    private companion object {
-        val WHATSAPP_PACKAGES = listOf("com.whatsapp", "com.whatsapp.w4b")
-        const val CONTACT_LOOKUP_TIMEOUT_MS = 2_500L
+    private sealed interface ContactMatch {
+        data class One(val contact: Contact) : ContactMatch
+        data object Several : ContactMatch
+        data object None : ContactMatch
+    }
+
+    private enum class WhatsAppAction(val mimeTypeSuffix: String) {
+        Voice("voip.call"),
+        Video("video.call"),
+        Chat("profile");
+
+        fun success(name: String): String = when (this) {
+            Voice -> "Calling $name on WhatsApp."
+            Video -> "Video calling $name on WhatsApp."
+            Chat -> "Opening $name's WhatsApp chat."
+        }
+    }
+
+    companion object {
+        /** Set in a [ToolResult.Success]'s data to have the launcher open search for its value. */
+        const val SHOW_SEARCH_KEY = "show_search"
+
+        private val WHATSAPP_PACKAGES = listOf("com.whatsapp", "com.whatsapp.w4b")
+        private const val CONTACT_LOOKUP_TIMEOUT_MS = 2_500L
     }
 }
+
+/**
+ * The one candidate [query] surely means, or null when it is ambiguous: a candidate whose
+ * whole name is what was said, or, failing that, the only candidate whose first two names
+ * are the first two names said.
+ */
+internal fun <T> pickContact(query: String, candidates: List<T>, nameOf: (T) -> String): T? {
+    val spoken = nameWords(query)
+    if (spoken.isEmpty()) return null
+    val exact = candidates.filter { nameWords(nameOf(it)) == spoken }
+    if (exact.size == 1) return exact.single()
+    if (exact.isEmpty() && spoken.size >= 2) {
+        val firstTwo = candidates.filter { nameWords(nameOf(it)).take(2) == spoken.take(2) }
+        if (firstTwo.size == 1) return firstTwo.single()
+    }
+    return null
+}
+
+private fun nameWords(name: String): List<String> =
+    name.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }

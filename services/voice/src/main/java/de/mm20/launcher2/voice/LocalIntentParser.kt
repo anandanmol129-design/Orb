@@ -7,7 +7,21 @@ private val torchLabel = Regex("^(flashlight|torch|light)\\s+(on|off)$")
 private val setTimer = Regex("^(set\\s+)?(a\\s+)?timer\\s+(for\\s+)?(.+)$")
 private val setAlarm = Regex("^(set\\s+)?(an?\\s+)?alarm\\s+(for\\s+)?(\\d{1,2})(:(\\d{2}))?\\s*(am|pm)?$")
 private val searchQuery = Regex("^(search|google|look\\s+up)\\s+(for\\s+)?(.+)$")
-private val whatsappVideoCall = Regex("^(?:make\\s+)?(?:a\\s+)?video\\s+call\\s+(?:to\\s+)?(.+?)(?:\\s+on\\s+whats?app)?$")
+private const val ON_WHATSAPP = "(?:\\s+(?:on|over|via|in)\\s+whats?\\s?app)"
+private val whatsappVideoCall = Regex("^(?:make\\s+)?(?:a\\s+)?(?:whats?\\s?app\\s+)?video\\s+call\\s+(?:to\\s+|with\\s+)?(.+?)$ON_WHATSAPP?$")
+private val whatsappVoiceCall = Regex(
+    "^(?:(?:make|place)\\s+)?(?:a\\s+)?(?:" +
+        // "whatsapp call x", "whatsapp voice call x"
+        "whats?\\s?app\\s+(?:voice\\s+|audio\\s+)?call\\s+(?:to\\s+)?(.+?)$ON_WHATSAPP?" +
+        // "call x on whatsapp", "voice call x on whatsapp"
+        "|(?:voice\\s+|audio\\s+)?call\\s+(?:to\\s+)?(.+?)$ON_WHATSAPP" +
+        ")$"
+)
+private val whatsappChat = Regex(
+    "^(?:(?:send\\s+)?(?:a\\s+)?(?:message|text|msg|chat)\\s+(?:to\\s+|with\\s+)?(.+?)$ON_WHATSAPP" +
+        "|(?:open\\s+)?whats?\\s?app\\s+(?:message|text|msg|chat)\\s+(?:to\\s+|with\\s+)?(.+?)" +
+        "|whats?\\s?app\\s+(?!call\\b|video\\b|voice\\b|audio\\b)(.+?))$"
+)
 private val phoneCall = Regex("^(?:(?:make|place)\\s+)?(?:a\\s+)?(?:phone\\s+)?(?:call|phone)\\s+(?:to\\s+)?(.+)$")
 private val openApp = Regex("^(open|launch|start|run)\\s+(.+)$")
 private val durationSpec = Regex("(\\d+|[a-z]+)\\s*(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\\b")
@@ -95,24 +109,15 @@ class LocalIntentParser {
     }
 
     private fun parseCall(text: String): ToolInvocation? {
-        whatsappVideoCall.find(text)?.let {
-            val contact = it.groupValues[1].trim()
-            if (contact.isNotEmpty()) {
-                return ToolInvocation(
-                    "orb.calls.whatsapp_video",
-                    ToolArgs.of("contact" to contact),
-                )
-            }
+        fun invocation(tool: String, match: MatchResult): ToolInvocation? {
+            val contact = match.groupValues.drop(1).firstOrNull { it.isNotBlank() }?.trim()
+            if (contact.isNullOrEmpty()) return null
+            return ToolInvocation(tool, ToolArgs.of("contact" to contact))
         }
-        phoneCall.find(text)?.let {
-            val contact = it.groupValues[1].trim()
-            if (contact.isNotEmpty()) {
-                return ToolInvocation(
-                    "orb.calls.phone",
-                    ToolArgs.of("contact" to contact),
-                )
-            }
-        }
+        whatsappVideoCall.find(text)?.let { m -> invocation("orb.calls.whatsapp_video", m)?.let { return it } }
+        whatsappVoiceCall.find(text)?.let { m -> invocation("orb.calls.whatsapp_voice", m)?.let { return it } }
+        whatsappChat.find(text)?.let { m -> invocation("orb.calls.whatsapp_chat", m)?.let { return it } }
+        phoneCall.find(text)?.let { m -> invocation("orb.calls.phone", m)?.let { return it } }
         return null
     }
 

@@ -54,8 +54,11 @@ import de.mm20.launcher2.ui.component.preferences.PreferenceScreen
 import de.mm20.launcher2.ui.component.preferences.SliderPreference
 import de.mm20.launcher2.ui.component.preferences.SwitchPreference
 import de.mm20.launcher2.ui.launcher.widgets.clock.ConfigureClockWidgetSheet
+import de.mm20.launcher2.ui.locals.LocalBackStack
 import de.mm20.launcher2.ui.locals.LocalDarkTheme
 import de.mm20.launcher2.ui.locals.LocalPreferDarkContentOverWallpaper
+import de.mm20.launcher2.ui.settings.media.MediaIntegrationSettingsRoute
+import de.mm20.launcher2.ui.settings.weather.WeatherIntegrationSettingsRoute
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -67,6 +70,7 @@ fun HomescreenSettingsScreen() {
         viewModel(factory = HomescreenSettingsScreenVM.Factory)
 
     val context = LocalContext.current
+    val backStack = LocalBackStack.current
 
     val dock by viewModel.dock.collectAsStateWithLifecycle(null)
     val dockRows by viewModel.dockRows.collectAsStateWithLifecycle(1)
@@ -109,6 +113,20 @@ fun HomescreenSettingsScreen() {
                     summary = stringResource(R.string.preference_screen_clockwidget_summary),
                     onClick = {
                         viewModel.showClockWidgetSheet = true
+                    }
+                )
+                Preference(
+                    title = stringResource(R.string.preference_weather_integration),
+                    summary = stringResource(R.string.preference_weather_integration_summary),
+                    onClick = {
+                        backStack.add(WeatherIntegrationSettingsRoute)
+                    }
+                )
+                Preference(
+                    title = stringResource(R.string.preference_media_integration),
+                    summary = stringResource(R.string.preference_media_integration_summary),
+                    onClick = {
+                        backStack.add(MediaIntegrationSettingsRoute)
                     }
                 )
                 SwitchPreference(

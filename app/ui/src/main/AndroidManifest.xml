@@ -88,13 +88,6 @@
         <activity android:name=".launcher.sheets.BindAndConfigureAppWidgetActivity" />
 
         <activity
-            android:name=".settings.orb.OrbSettingsActivity"
-            android:exported="false"
-            android:label="Orb settings"
-            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
-            android:enableOnBackInvokedCallback="true" />
-
-        <activity
             android:name=".launcher.feed.FeedReaderActivity"
             android:exported="false"
             android:label="Feed"

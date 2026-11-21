@@ -74,7 +74,7 @@ import de.mm20.launcher2.ui.launcher.scaffold.Gesture
 import de.mm20.launcher2.ui.launcher.search.SearchVM
 import de.mm20.launcher2.ui.launcher.scaffold.LauncherScaffoldState
 import de.mm20.launcher2.ui.launcher.scaffold.components.ScaffoldComponent
-import de.mm20.launcher2.ui.settings.orb.OrbSettingsActivity
+import de.mm20.launcher2.ui.settings.SettingsActivity
 import de.mm20.launcher2.ui.launcher.scaffold.components.WidgetsComponent
 import de.mm20.launcher2.ui.launcher.feed.FeedReaderActivity
 import de.mm20.launcher2.ui.launcher.widgets.clock.ClockWidget
@@ -362,9 +362,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         )
 
                         PieActionType.Settings ->
-                            context.startActivity(
-                                android.content.Intent(context, OrbSettingsActivity::class.java)
-                            )
+                            context.startActivity(SettingsActivity.orbSettingsIntent(context))
 
                         PieActionType.Edit -> {
                             editMode = true
@@ -554,7 +552,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         onDone = { editMode = false },
                         onAddApp = { showAppPicker = true },
                         onEditOrb = {
-                            context.startActivity(Intent(context, OrbSettingsActivity::class.java))
+                            context.startActivity(SettingsActivity.orbSettingsIntent(context))
                         },
                     )
                 }
@@ -635,7 +633,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 action is GestureAction.Voice -> startVoice()
 
                                 action is GestureAction.OrbSettings -> context.startActivity(
-                                    Intent(context, OrbSettingsActivity::class.java)
+                                    SettingsActivity.orbSettingsIntent(context)
                                 )
 
                                 action is GestureAction.OpenFolder -> {

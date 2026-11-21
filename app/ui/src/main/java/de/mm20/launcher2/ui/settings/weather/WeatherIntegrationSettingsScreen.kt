@@ -35,6 +35,7 @@ import de.mm20.launcher2.ui.component.preferences.PreferenceCategory
 import de.mm20.launcher2.ui.component.preferences.PreferenceScreen
 import de.mm20.launcher2.ui.component.preferences.SwitchPreference
 import de.mm20.launcher2.ui.locals.LocalBackStack
+import de.mm20.launcher2.ui.settings.breezyweather.BreezyWeatherSettingsRoute
 import de.mm20.launcher2.ui.settings.locale.LocaleSettingsRoute
 import de.mm20.launcher2.weather.breezy.BreezyWeatherProvider
 import kotlinx.serialization.Serializable
@@ -153,6 +154,13 @@ fun WeatherIntegrationSettingsScreen() {
                     icon = R.drawable.open_in_new_24px,
                     onClick = {
                         backStack.add(LocaleSettingsRoute)
+                    }
+                )
+                Preference(
+                    title = stringResource(R.string.preference_breezyweather_integration),
+                    icon = R.drawable.breezy_weather,
+                    onClick = {
+                        backStack.add(BreezyWeatherSettingsRoute)
                     }
                 )
             }

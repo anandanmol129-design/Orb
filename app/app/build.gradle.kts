@@ -36,6 +36,11 @@ android {
         versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.toIntOrNull() ?: 2026112002
         versionName = "0.4.9"
         signingConfig = signingConfigs.getByName("debug")
+        ndk {
+            // Phones (ARM) and the x86_64 emulator. The wake word's native speech engine is
+            // about 10 MB per architecture, so the others aren't shipped.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
 
     signingConfigs {

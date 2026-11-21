@@ -117,6 +117,9 @@ fun OrbSettingsScreen(
         }
     }
 
+    var showVoiceCommands by remember { mutableStateOf(false) }
+    if (showVoiceCommands) VoiceCommandsDialog(onDismiss = { showVoiceCommands = false })
+
     val wakeWordListener: WakeWordListener = koinInject()
     val wakeModel by wakeWordListener.modelState.collectAsState()
     var wakeEnabled by remember { mutableStateOf(voiceSettings.wakeWordEnabled) }
@@ -178,6 +181,19 @@ fun OrbSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { SectionTitle("Voice") }
+            item {
+                OutlinedCard(onClick = { showVoiceCommands = true }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Voice commands", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.size(4.dp))
+                        Text(
+                            "What you can say, plus call and timeout settings.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             item {
                 OutlinedCard {
                     Column(Modifier.padding(16.dp)) {

@@ -23,5 +23,5 @@ val voiceModule = module {
     }
 
     // Launcher-level tools participate in the same registry as feature plugins.
-    single<AgentPlugin> { LauncherToolsPlugin(androidContext(), get(), get(named<Contact>())) }
+    single<AgentPlugin> { LauncherToolsPlugin(androidContext(), get(), get(named<Contact>()), get()) }
 }

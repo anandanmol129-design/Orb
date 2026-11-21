@@ -75,7 +75,7 @@ class VoiceController(
     private var silenceJob: Job? = null
 
     /**
-     * Gives up on a session in which no words have been recognised for [NO_WORDS_TIMEOUT_MS].
+     * Gives up on a session in which no words have been recognised for [VoiceSettings.silenceTimeoutMs].
      * Background noise keeps the recognizer listening indefinitely, so its own end-of-speech
      * timeout can't be relied on to stop it.
      */
@@ -171,10 +171,11 @@ class VoiceController(
     private fun armNoWordsWatchdog() {
         noWordsJob?.cancel()
         noWordsJob = scope.launch {
-            delay(NO_WORDS_TIMEOUT_MS)
+            val timeout = settings.silenceTimeoutMs
+            delay(timeout)
             noWordsJob = null
             if (_state.value == VoiceUiState.Listening) {
-                android.util.Log.d("OrbVoice", "no words for ${NO_WORDS_TIMEOUT_MS}ms, closing")
+                android.util.Log.d("OrbVoice", "no words for ${timeout}ms, closing")
                 cancel()
             }
         }
@@ -377,9 +378,6 @@ class VoiceController(
     private companion object {
         /** How long to wait after the transcript stops growing before finishing the utterance. */
         private const val SILENCE_TIMEOUT_MS = 1_000L
-
-        /** How long a session may go without any recognised words before it closes itself. */
-        private const val NO_WORDS_TIMEOUT_MS = 3_000L
     }
 }
 

@@ -43,11 +43,33 @@ class VoiceSettings(
             ?: DEFAULT_WAKE_PHRASE
         set(value) = prefs.edit().putString(KEY_WAKE_PHRASE, value).apply()
 
+    /** Allow "call X" phone calls by voice. */
+    var allowPhoneCalls: Boolean
+        get() = prefs.getBoolean(KEY_ALLOW_CALLS, true)
+        set(value) = prefs.edit().putBoolean(KEY_ALLOW_CALLS, value).apply()
+
+    /** Allow WhatsApp calls, video calls and chats by voice. */
+    var allowWhatsApp: Boolean
+        get() = prefs.getBoolean(KEY_ALLOW_WHATSAPP, true)
+        set(value) = prefs.edit().putBoolean(KEY_ALLOW_WHATSAPP, value).apply()
+
+    /** Place phone calls straight away (needs the Phone permission) instead of opening the dialer. */
+    var callDirectly: Boolean
+        get() = prefs.getBoolean(KEY_CALL_DIRECTLY, true)
+        set(value) = prefs.edit().putBoolean(KEY_CALL_DIRECTLY, value).apply()
+
+    /** How long the mic waits for the first words before closing, in milliseconds. */
+    var silenceTimeoutMs: Long
+        get() = prefs.getLong(KEY_SILENCE_TIMEOUT, DEFAULT_SILENCE_TIMEOUT_MS)
+        set(value) = prefs.edit().putLong(KEY_SILENCE_TIMEOUT, value).apply()
+
     val isCloudReady: Boolean
         get() = cloudEnabled && apiKey.isNotBlank()
 
     companion object {
         const val DEFAULT_WAKE_PHRASE = "Hey Orb"
+        const val DEFAULT_SILENCE_TIMEOUT_MS = 3_000L
+        val SILENCE_TIMEOUT_CHOICES_MS = listOf(2_000L, 3_000L, 5_000L)
 
         private const val PREFS = "orb_voice"
         private const val KEY_CLOUD_ENABLED = "cloud_enabled"
@@ -57,6 +79,10 @@ class VoiceSettings(
         private const val KEY_PROVIDER = "provider"
         private const val KEY_WAKE_ENABLED = "wake_enabled"
         private const val KEY_WAKE_PHRASE = "wake_phrase"
+        private const val KEY_ALLOW_CALLS = "allow_phone_calls"
+        private const val KEY_ALLOW_WHATSAPP = "allow_whatsapp"
+        private const val KEY_CALL_DIRECTLY = "call_directly"
+        private const val KEY_SILENCE_TIMEOUT = "silence_timeout_ms"
 
         private const val DEFAULT_ENDPOINT = "https://api.openai.com/v1"
         private const val DEFAULT_MODEL = "gpt-4o-mini"

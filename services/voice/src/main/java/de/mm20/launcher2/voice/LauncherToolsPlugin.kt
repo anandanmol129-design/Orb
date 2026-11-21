@@ -38,6 +38,7 @@ class LauncherToolsPlugin(
     private val context: Context,
     private val appRepository: AppRepository,
     private val contacts: SearchableRepository<Contact>,
+    private val settings: VoiceSettings,
 ) : AgentPlugin {
 
     override val id: String = "orb.launcher"
@@ -127,6 +128,9 @@ class LauncherToolsPlugin(
 
     private suspend fun phoneCall(args: JsonObject): ToolResult {
         val target = args.string("contact")?.trim().orEmpty()
+        if (!settings.allowPhoneCalls) {
+            return ToolResult.Error("Phone calls by voice are turned off in Orb's voice settings.")
+        }
         if (target.isBlank()) return ToolResult.Error("Who should I call?")
         val number: String
         val name: String
@@ -143,7 +147,7 @@ class LauncherToolsPlugin(
                 ?: return ToolResult.Error("${contact.name} has no phone number.")
             name = contact.name
         }
-        val canPlaceCall = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CALL_PHONE) ==
+        val canPlaceCall = settings.callDirectly && ContextCompat.checkSelfPermission(context, android.Manifest.permission.CALL_PHONE) ==
             PackageManager.PERMISSION_GRANTED
         val intent = Intent(
             if (canPlaceCall) Intent.ACTION_CALL else Intent.ACTION_DIAL,
@@ -158,6 +162,9 @@ class LauncherToolsPlugin(
 
     private suspend fun whatsapp(args: JsonObject, action: WhatsAppAction): ToolResult {
         val target = args.string("contact")?.trim().orEmpty()
+        if (!settings.allowWhatsApp) {
+            return ToolResult.Error("WhatsApp commands are turned off in Orb's voice settings.")
+        }
         if (target.isBlank()) return ToolResult.Error("Who should I contact on WhatsApp?")
         val contact = when (val match = resolveContact(target)) {
             is ContactMatch.One -> match.contact

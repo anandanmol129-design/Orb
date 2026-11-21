@@ -11,6 +11,7 @@ val voiceModule = module {
     single { VoiceSettings(androidContext()) }
     single { LocalIntentParser() }
     single { CloudNlu(get()) }
+    single { WakeWordListener(androidContext(), get()) }
     single {
         VoiceController(
             context = androidContext(),

@@ -52,6 +52,13 @@ dependencies {
 
     implementation(libs.koin.android)
 
+    // Offline "Hey Orby" wake word detection. JNA has to be the Android (aar) build, which
+    // carries the native libraries.
+    implementation(libs.vosk.android) {
+        exclude(group = "net.java.dev.jna", module = "jna")
+    }
+    implementation(variantOf(libs.jna) { artifactType("aar") })
+
     implementation(project(":core:agent"))
     implementation(project(":core:base"))
     implementation(project(":core:ktx"))

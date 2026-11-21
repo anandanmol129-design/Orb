@@ -36,6 +36,8 @@ androidx-emojipicker = "1.6.0"
 haze = "1.7.2"
 coil = "2.7.0"
 koin = "4.2.2"
+vosk = "0.3.75"
+jna = "5.18.1"
 ktor = "3.5.2"
 junit = "4.13.2"
 junitVersion = "1.2.1"
@@ -114,6 +116,8 @@ stringsimilarity = { group = "com.aallam.similarity", name = "string-similarity-
 #noinspection NewerVersionAvailable 4.4.2 is the last GPL compatible version, don't update to 5.x
 mathparser = { group = "org.mariuszgromada.math", name = "MathParser.org-mXparser", version = "4.4.2" }
 
+vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 koin-androidxcompose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
 

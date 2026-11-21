@@ -82,6 +82,8 @@ import de.mm20.launcher2.ui.locals.LocalSnackbarHostState
 import de.mm20.launcher2.ui.launcher.wallpaper.WallpaperVoice
 import de.mm20.launcher2.voice.VoiceController
 import de.mm20.launcher2.voice.VoiceUiState
+import de.mm20.launcher2.voice.VoiceSettings
+import de.mm20.launcher2.voice.WakeWordListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -127,6 +129,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         val appRepository: AppRepository = koinInject()
         val appShortcutRepository: AppShortcutRepository = koinInject()
         val voiceController: VoiceController = koinInject()
+        val wakeWordListener: WakeWordListener = koinInject()
         val gestureSettings: GestureSettings = koinInject()
 
         val tapAction by gestureSettings.tap.collectAsState(initial = GestureAction.NoAction)
@@ -207,9 +210,14 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         // Re-read the orb state when the settings activity returns, since it may have been
         // changed there (shape, fill, menu items) or replaced wholesale by a backup restore.
         val lifecycleOwner = LocalLifecycleOwner.current
+        var homeResumed by remember {
+            mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        }
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_PAUSE) homeResumed = false
                 if (event == Lifecycle.Event.ON_RESUME) {
+                    homeResumed = true
                     orbShape = pieRepository.orbShape()
                     orbFill = pieRepository.orbFill()
                     mediaRingEnabled = pieRepository.mediaRingEnabled()
@@ -296,6 +304,37 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
         }
+
+        // "Hey Orby": listen for the wake phrase while the home screen itself is showing and
+        // the assistant is idle (it needs the microphone for itself). Fetch the speech model
+        // on its own the first time, but only over an unmetered connection.
+        val voiceSettings: VoiceSettings = koinInject()
+        val wakeModel by wakeWordListener.modelState.collectAsState()
+        LaunchedEffect(homeResumed) {
+            if (homeResumed && voiceSettings.wakeWordEnabled &&
+                wakeModel !is WakeWordListener.ModelState.Ready &&
+                wakeModel !is WakeWordListener.ModelState.Downloading
+            ) {
+                val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
+                if (connectivity?.isActiveNetworkMetered == false) wakeWordListener.downloadModel()
+            }
+        }
+        val listenForWakeWord = homeResumed && voiceState == VoiceUiState.Idle && !editMode &&
+            !sleeping && !state.isSettledOnSecondaryPage &&
+            wakeModel == WakeWordListener.ModelState.Ready
+        LaunchedEffect(listenForWakeWord) {
+            if (listenForWakeWord) {
+                // Let the assistant's recognizer release the microphone first.
+                delay(400)
+                wakeWordListener.start {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    startVoice()
+                }
+            } else {
+                wakeWordListener.stop()
+            }
+        }
+        DisposableEffect(Unit) { onDispose { wakeWordListener.stop() } }
 
         // Launches or opens whatever was picked. Pie slices and folder entries share this.
         fun activate(item: PieItem) {

@@ -86,6 +86,8 @@ import de.mm20.launcher2.ui.launcher.orb.folderId
 import de.mm20.launcher2.ui.launcher.orb.orbBodyPath
 import de.mm20.launcher2.voice.AiProvider
 import de.mm20.launcher2.voice.VoiceSettings
+import de.mm20.launcher2.voice.WakeWordListener
+import androidx.compose.material3.LinearProgressIndicator
 import org.koin.compose.koinInject
 
 /**
@@ -114,6 +116,11 @@ fun OrbSettingsScreen(
                 ?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
         }
     }
+
+    val wakeWordListener: WakeWordListener = koinInject()
+    val wakeModel by wakeWordListener.modelState.collectAsState()
+    var wakeEnabled by remember { mutableStateOf(voiceSettings.wakeWordEnabled) }
+    var wakePhrase by remember { mutableStateOf(voiceSettings.wakePhrase) }
 
     var cloudEnabled by remember { mutableStateOf(voiceSettings.cloudEnabled) }
     var provider by remember { mutableStateOf(voiceSettings.provider) }
@@ -198,6 +205,103 @@ fun OrbSettingsScreen(
                                 }
                             }) {
                                 Text("Set Orb as assistant")
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                OutlinedCard {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Wake word", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Say \"$wakePhrase\" while the home screen is showing to start the assistant. Listening happens on this phone only.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = wakeEnabled,
+                                onCheckedChange = {
+                                    wakeEnabled = it
+                                    voiceSettings.wakeWordEnabled = it
+                                    if (it && wakeModel !is WakeWordListener.ModelState.Ready) {
+                                        wakeWordListener.downloadModel()
+                                    }
+                                },
+                            )
+                        }
+                        if (wakeEnabled) {
+                            Spacer(Modifier.size(12.dp))
+                            OutlinedTextField(
+                                value = wakePhrase,
+                                onValueChange = {
+                                    wakePhrase = it
+                                    voiceSettings.wakePhrase = it
+                                },
+                                label = { Text("Wake phrase") },
+                                supportingText = {
+                                    Text("Use everyday words. The offline model may not know made-up names, apart from \"Orby\".")
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            when (val m = wakeModel) {
+                                WakeWordListener.ModelState.Ready -> Text(
+                                    "Speech model installed.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+
+                                is WakeWordListener.ModelState.Downloading -> Column {
+                                    Text(
+                                        "Downloading the speech model… ${(m.progress * 100).toInt()}%",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.size(6.dp))
+                                    LinearProgressIndicator(
+                                        progress = { m.progress },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                WakeWordListener.ModelState.Missing,
+                                is WakeWordListener.ModelState.Failed -> Column {
+                                    Text(
+                                        if (m is WakeWordListener.ModelState.Failed) {
+                                            "Download failed: ${m.message}"
+                                        } else {
+                                            "Needs a one-time 41 MB download of the offline speech model. It downloads by itself on Wi-Fi."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.size(8.dp))
+                                    Button(onClick = { wakeWordListener.downloadModel() }) {
+                                        Text(if (m is WakeWordListener.ModelState.Failed) "Retry download" else "Download now")
+                                    }
+                                }
+                            }
+                            if (!audioGranted) {
+                                Spacer(Modifier.size(8.dp))
+                                Text(
+                                    "Needs microphone access.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                Spacer(Modifier.size(8.dp))
+                                Button(onClick = {
+                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }) {
+                                    Text("Allow microphone")
+                                }
                             }
                         }
                     }

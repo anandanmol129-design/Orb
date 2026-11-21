@@ -365,7 +365,7 @@ private fun ActionList(
     onPickFolder: () -> Unit,
 ) {
     val available = PieActionType.entries.filter {
-        it != PieActionType.Edit && it != PieActionType.Widgets && it !in existing
+        it != PieActionType.Widgets && it !in existing
     }
     LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
         item(key = "folder") {

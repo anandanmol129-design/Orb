@@ -110,7 +110,7 @@ class PieRepository(
         } else {
             null
         }
-        val items = ensureEdit(loaded ?: defaults())
+        val items = loaded ?: defaults()
         // Existing installs keep their saved pie configuration, so adding Feed to the
         // defaults alone would leave the new action unavailable on those devices.
         if (!prefs.getBoolean(KEY_FEED_MIGRATED, false)) {
@@ -244,12 +244,6 @@ class PieRepository(
         prefs.edit().putInt(KEY_MEDIA_FORWARD, seconds).apply()
     }
 
-    private fun ensureEdit(items: List<PieItem>): List<PieItem> =
-        if (items.any { it is PieItem.Action && it.type == PieActionType.Edit }) {
-            items
-        } else {
-            items + PieItem.Action("edit", PieActionType.Edit, "Edit")
-        }
 
     companion object {
         private const val PREFS = "orb_pie"

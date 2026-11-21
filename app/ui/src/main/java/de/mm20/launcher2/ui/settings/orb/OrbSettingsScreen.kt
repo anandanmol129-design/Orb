@@ -956,7 +956,7 @@ private fun AddActionButton(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val used = existing.filterIsInstance<PieItem.Action>().map { it.type }.toSet()
-    val available = PieActionType.entries.filter { it !in used && it != PieActionType.Edit }
+    val available = PieActionType.entries.filter { it !in used }
 
     Box {
         Button(onClick = { expanded = true }) { Text("Add action") }

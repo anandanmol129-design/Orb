@@ -28,7 +28,7 @@ val voiceCommandGroups: List<VoiceCommandGroup> = listOf(
         description = "Calls a contact, or a number with at least 7 digits.",
         examples = listOf(
             VoiceExample("Call Mom", "orb.calls.phone"),
-            VoiceExample("Phone Priyanshu Mummy", "orb.calls.phone"),
+            VoiceExample("Phone Sam Patel", "orb.calls.phone"),
             VoiceExample("Make a call to 5551234567", "orb.calls.phone"),
         ),
     ),

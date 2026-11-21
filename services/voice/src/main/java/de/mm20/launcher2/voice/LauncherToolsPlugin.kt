@@ -223,7 +223,7 @@ class LauncherToolsPlugin(
      *
      * Only acts on a sure match: a contact whose whole name is what was said, or, failing
      * that, the only contact whose first two names are the first two names said. A single
-     * word ("Priyanshu") or two words shared by several contacts ("JSS Priyanshu") is
+     * word ("Sam") or two words shared by several contacts ("Work Sam") is
      * ambiguous, and the user picks from the list instead.
      */
     private suspend fun resolveContact(query: String): ContactMatch {

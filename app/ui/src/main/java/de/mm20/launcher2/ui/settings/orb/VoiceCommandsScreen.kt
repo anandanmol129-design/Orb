@@ -83,7 +83,7 @@ fun VoiceCommandsScreen(onBack: () -> Unit) {
         ) {
             item { VoiceSectionTitle("How to use") }
             item {
-                OutlinedCard {
+                OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             "Say \"${settings.wakePhrase}\" on the home screen (if the wake word is on), " +
@@ -102,7 +102,7 @@ fun VoiceCommandsScreen(onBack: () -> Unit) {
             item { VoiceSectionTitle("What you can say") }
             voiceCommandGroups.forEach { group ->
                 item {
-                    OutlinedCard {
+                    OutlinedCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp)) {
                             Text(group.title, style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.size(4.dp))
@@ -126,7 +126,7 @@ fun VoiceCommandsScreen(onBack: () -> Unit) {
 
             item { VoiceSectionTitle("Picking the right contact") }
             item {
-                OutlinedCard {
+                OutlinedCard(Modifier.fillMaxWidth()) {
                     Text(
                         "If the name you say matches exactly one contact, or the first two names match " +
                             "exactly one contact, Orb acts right away. Otherwise it opens search with " +
@@ -140,7 +140,7 @@ fun VoiceCommandsScreen(onBack: () -> Unit) {
 
             item { VoiceSectionTitle("Command settings") }
             item {
-                OutlinedCard {
+                OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SwitchRow(
                             "Phone calls",
@@ -162,7 +162,7 @@ fun VoiceCommandsScreen(onBack: () -> Unit) {
                 }
             }
             item {
-                OutlinedCard {
+                OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Silence timeout", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.size(4.dp))

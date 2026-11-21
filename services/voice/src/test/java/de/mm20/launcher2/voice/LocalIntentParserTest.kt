@@ -16,15 +16,15 @@ class LocalIntentParserTest {
 
     @Test
     fun phoneCalls() {
-        assertCall("Call Priyanshu Mummy", "orb.calls.phone", "priyanshu mummy")
-        assertCall("make a call to JSS Priyanshu", "orb.calls.phone", "jss priyanshu")
+        assertCall("Call Sam Patel", "orb.calls.phone", "sam patel")
+        assertCall("make a call to Work Sam", "orb.calls.phone", "work sam")
         assertCall("phone mom.", "orb.calls.phone", "mom")
     }
 
     @Test
     fun whatsappVoiceCalls() {
-        assertCall("call Priyanshu Mummy on WhatsApp", "orb.calls.whatsapp_voice", "priyanshu mummy")
-        assertCall("WhatsApp call jss priyanshu ise", "orb.calls.whatsapp_voice", "jss priyanshu ise")
+        assertCall("call Sam Patel on WhatsApp", "orb.calls.whatsapp_voice", "sam patel")
+        assertCall("WhatsApp call work sam ise", "orb.calls.whatsapp_voice", "work sam ise")
         assertCall("whatsapp voice call mom", "orb.calls.whatsapp_voice", "mom")
         assertCall("voice call mom on whats app", "orb.calls.whatsapp_voice", "mom")
     }
@@ -33,14 +33,14 @@ class LocalIntentParserTest {
     fun whatsappVideoCalls() {
         assertCall("video call mom", "orb.calls.whatsapp_video", "mom")
         assertCall("video call mom on WhatsApp", "orb.calls.whatsapp_video", "mom")
-        assertCall("WhatsApp video call jss priyanshu", "orb.calls.whatsapp_video", "jss priyanshu")
+        assertCall("WhatsApp video call work sam", "orb.calls.whatsapp_video", "work sam")
     }
 
     @Test
     fun whatsappChats() {
         assertCall("message mom on WhatsApp", "orb.calls.whatsapp_chat", "mom")
-        assertCall("open WhatsApp chat with Priyanshu Mummy", "orb.calls.whatsapp_chat", "priyanshu mummy")
-        assertCall("whatsapp priyanshu mummy", "orb.calls.whatsapp_chat", "priyanshu mummy")
+        assertCall("open WhatsApp chat with Sam Patel", "orb.calls.whatsapp_chat", "sam patel")
+        assertCall("whatsapp sam patel", "orb.calls.whatsapp_chat", "sam patel")
     }
 
     @Test

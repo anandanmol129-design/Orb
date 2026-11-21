@@ -27,7 +27,7 @@ import java.net.URL
 import java.util.zip.ZipInputStream
 
 /**
- * Listens for the wake phrase ("Hey Orby" by default) fully on the device, using Vosk.
+ * Listens for the wake phrase ("Hey Orb" by default) fully on the device, using Vosk.
  *
  * The speech model (about 40 MB) is downloaded once, on request. Listening is restricted by
  * a grammar to the wake phrase and a few look-alikes, which keeps it cheap and keeps other
@@ -198,28 +198,41 @@ class WakeWordListener(
 }
 
 /** What the recognizer may hear, and which of it counts as the wake phrase. */
-internal class WakeGrammar(val target: String, val grammarJson: String) {
-    fun matches(heard: String): Boolean = " ${heard.trim()} ".contains(" $target ")
+internal class WakeGrammar(val targets: List<String>, val grammarJson: String) {
+    fun matches(heard: String): Boolean {
+        val padded = " ${heard.trim()} "
+        return targets.any { padded.contains(" $it ") }
+    }
 }
 
 /**
  * Builds the grammar for [phrase]. Words the offline model doesn't know are swapped for how
- * it hears them ("Orby" comes out as "or be"); without that it would drop them. Look-alike
- * phrases are listed too, so that speech that only sounds similar is matched to them instead
- * of to the wake phrase.
+ * it hears them ("Orby" comes out as "or be"); without that it would drop them. For "hey …"
+ * phrases the glide into the next word is often heard as "you" ("hey you orb"), so that
+ * counts too, and look-alike phrases are listed so that speech that only sounds similar
+ * ("hey Bob", "hey all") is matched to them instead of to the wake phrase.
  */
 internal fun wakeGrammar(phrase: String): WakeGrammar {
     val words = phrase.lowercase().split(Regex("[^\\p{L}\\p{N}']+")).filter { it.isNotEmpty() }
-    val target = words.joinToString(" ") { SOUNDS_LIKE[it] ?: it }.ifEmpty { "hey or be" }
+    val target = words.joinToString(" ") { SOUNDS_LIKE[it] ?: it }.ifEmpty { "hey orb" }
+    val targets = mutableListOf(target)
     val options = linkedSetOf(target)
     if (target.startsWith("hey ")) {
-        options += listOf("hey ruby", "hey bobby", "hey robbie", "hey there", "hey you", "hey")
+        val glided = "hey you " + target.removePrefix("hey ")
+        targets += glided
+        options += glided
+        options += LOOK_ALIKES
     }
     options += target.substringAfter(' ', "")
     options.remove("")
     options += "[unk]"
-    return WakeGrammar(target, JsonArray(options.map { JsonPrimitive(it) }).toString())
+    return WakeGrammar(targets, JsonArray(options.map { JsonPrimitive(it) }).toString())
 }
+
+private val LOOK_ALIKES = listOf(
+    "hey bob", "hey rob", "hey or", "hey all", "hey ruby", "hey bobby", "hey robbie",
+    "hey there", "hey you", "hey",
+)
 
 private val SOUNDS_LIKE = mapOf(
     "orby" to "or be",

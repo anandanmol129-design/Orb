@@ -246,7 +246,7 @@ fun OrbSettingsScreen(
                                 },
                                 label = { Text("Wake phrase") },
                                 supportingText = {
-                                    Text("Use everyday words. The offline model may not know made-up names, apart from \"Orby\".")
+                                    Text("Use everyday words. The offline model may not know made-up names.")
                                 },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),

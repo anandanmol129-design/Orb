@@ -47,7 +47,7 @@ class VoiceSettings(
         get() = cloudEnabled && apiKey.isNotBlank()
 
     companion object {
-        const val DEFAULT_WAKE_PHRASE = "Hey Orby"
+        const val DEFAULT_WAKE_PHRASE = "Hey Orb"
 
         private const val PREFS = "orb_voice"
         private const val KEY_CLOUD_ENABLED = "cloud_enabled"

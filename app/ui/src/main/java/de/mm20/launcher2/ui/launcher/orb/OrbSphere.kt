@@ -477,6 +477,10 @@ fun OrbSphere(
             flipDir = if (skipDirection < 0) -1 else 1
             flip.snapTo(0f)
             flip.animateTo(1f, tween(RaceMs, easing = LinearEasing))
+        } else {
+            // A race cut short (paused, stopped, or the track changed again) must not leave
+            // the orb stuck half way, still showing the old side.
+            flip.snapTo(1f)
         }
     }
     // The art hitting the orb's edge knocks the visualizer dots outward.
@@ -888,7 +892,7 @@ fun OrbSphere(
                 // each swept from the top, clockwise for next and anticlockwise for previous,
                 // with the outer lanes a little ahead. The old side shows where no car has been.
                 val f = flip.value
-                if (f < 1f) {
+                if (f < 1f && playing) {
                     val reach = r * 1.45f
                     raceSwept.rewind()
                     for (lane in 0 until RaceLanes) {

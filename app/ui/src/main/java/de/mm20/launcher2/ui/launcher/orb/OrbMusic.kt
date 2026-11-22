@@ -183,7 +183,7 @@ class OrbAudio {
             avg[b] += (mag - avg[b]) * 0.15f
             // Hits push a column out without snapping it fully, so the ring swells with the
             // beat instead of flickering band by band.
-            levels[b] = (shape * 0.75f + hit * 1.5f).coerceIn(0f, 1f)
+            levels[b] = (shape * 0.7f + hit * 2.5f).coerceIn(0f, 1f)
         }
     }
 

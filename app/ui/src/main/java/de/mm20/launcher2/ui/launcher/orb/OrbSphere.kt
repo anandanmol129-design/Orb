@@ -368,6 +368,9 @@ fun OrbSphere(
         label = "vis",
     )
     val levels = remember { FloatArray(OrbAudio.BANDS) }
+    // The sea: [WaveAmp] how tall the travelling waves stand, and the phases of the three
+    // waves that roll around the ring. Louder music and harder hits make them taller and faster.
+    val sea = remember { FloatArray(SeaSize) }
     val frameTick = remember { mutableLongStateOf(0L) }
     val targets = remember { FloatArray(OrbAudio.BANDS) }
     val blurred = remember { FloatArray(OrbAudio.BANDS) }
@@ -394,26 +397,39 @@ fun OrbSphere(
                     }
                 }
             }
-            // Neighbouring bands pull towards each other, so the edge moves as one smooth wave
-            // instead of every column jittering on its own.
-            repeat(2) {
-                for (i in targets.indices) {
-                    val l = targets[(i - 1).coerceAtLeast(0)]
-                    val r = targets[(i + 1).coerceAtMost(targets.size - 1)]
-                    blurred[i] = 0.25f * l + 0.5f * targets[i] + 0.25f * r
-                }
-                blurred.copyInto(targets)
+            // Neighbouring bands pull towards each other a little, so the edge keeps its shape
+            // as one surface rather than separate columns.
+            for (i in targets.indices) {
+                val l = targets[(i - 1).coerceAtLeast(0)]
+                val r = targets[(i + 1).coerceAtMost(targets.size - 1)]
+                blurred[i] = 0.2f * l + 0.6f * targets[i] + 0.2f * r
             }
-            // Frame-rate independent easing: rise briskly, fall gently.
-            val rise = 1f - exp(-dt * 16f)
-            val fall = 1f - exp(-dt * 5f)
+            blurred.copyInto(targets)
+            // Frame-rate independent easing: rise fast, fall gently.
+            val rise = 1f - exp(-dt * 28f)
+            val fall = 1f - exp(-dt * 7f)
             var any = false
+            var energy = 0f
             for (i in levels.indices) {
                 val target = targets[i]
                 val cur = levels[i]
                 levels[i] = cur + (target - cur) * if (target > cur) rise else fall
                 if (levels[i] > 0.002f) any = true
+                energy += levels[i]
             }
+            energy /= levels.size
+            // Turbulence: overall loudness plus how far it just jumped above its recent level.
+            val surge = (energy - sea[SeaSlow]).coerceAtLeast(0f)
+            sea[SeaSlow] += (energy - sea[SeaSlow]) * (1f - exp(-dt * 2f))
+            val storm = (energy * 1.3f + surge * 4f).coerceIn(0f, 1.3f)
+            val ampTarget = if (playing) storm * 0.55f else 0f
+            sea[WaveAmp] += (ampTarget - sea[WaveAmp]) * (1f - exp(-dt * if (ampTarget > sea[WaveAmp]) 14f else 3f))
+            if (sea[WaveAmp] > 0.002f) any = true
+            // Calm music rolls slowly; a storm whips the waves round.
+            val speed = 0.6f + 3.4f * storm
+            sea[Phase1] += dt * 1.7f * speed
+            sea[Phase2] += dt * 2.6f * speed
+            sea[Phase3] += dt * 4.1f * speed
             frameTick.longValue = now
             if (!playing && !any) break
         }
@@ -591,6 +607,7 @@ fun OrbSphere(
                         body = body,
                         r = r,
                         levels = levels,
+                        sea = sea,
                         amount = waveAmt,
                         color = rim,
                     )
@@ -825,6 +842,7 @@ private fun DrawScope.drawDotRing(
     body: Offset,
     r: Float,
     levels: FloatArray,
+    sea: FloatArray,
     amount: Float,
     color: Color,
 ) {
@@ -855,7 +873,16 @@ private fun DrawScope.drawDotRing(
         val a = levels[last - lo]
         val b = levels[last - hi]
         val x = f - lo
-        val level = a + (b - a) * x * x * (3f - 2f * x)
+        val band = a + (b - a) * x * x * (3f - 2f * x)
+        // Three waves travelling around the whole ring (whole numbers of crests so they meet
+        // seamlessly), crossing each other like a choppy sea.
+        val theta = atan2(rx, -ry)
+        val crest = 0.5f + 0.5f * (
+            0.55f * sin(3f * theta - sea[Phase1]) +
+                0.3f * sin(5f * theta + sea[Phase2]) +
+                0.15f * sin(9f * theta - sea[Phase3])
+            )
+        val level = (band * 0.65f + sea[WaveAmp] * crest * 1.2f).coerceIn(0f, 1f)
         val lit = level * DotsPerColumn
         val stagger = if (i % 2 == 1) step * 0.5f else 0f
         // Loud columns also swell their dots, so peaks read as bursts rather than lines.
@@ -876,6 +903,14 @@ private fun DrawScope.drawDotRing(
 
 private const val DotColumns = 84
 private const val DotsPerColumn = 10
+
+// Slots of the visualizer's sea state.
+private const val WaveAmp = 0
+private const val Phase1 = 1
+private const val Phase2 = 2
+private const val Phase3 = 3
+private const val SeaSlow = 4
+private const val SeaSize = 5
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

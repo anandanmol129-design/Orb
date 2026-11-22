@@ -2,6 +2,8 @@ package de.mm20.launcher2.ui.launcher.orb
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.KeyframesSpec
 import androidx.compose.animation.core.LinearEasing
@@ -26,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -427,6 +428,8 @@ fun OrbSphere(
             val ampTarget = if (playing) storm * 0.55f else 0f
             sea[WaveAmp] += (ampTarget - sea[WaveAmp]) * (1f - exp(-dt * if (ampTarget > sea[WaveAmp]) 14f else 3f))
             if (sea[WaveAmp] > 0.002f) any = true
+            sea[Kick] *= exp(-dt * 4.5f)
+            if (sea[Kick] > 0.01f) any = true
             // Calm music rolls slowly; a storm whips the waves round.
             val speed = 0.6f + 3.4f * storm
             sea[Phase1] += dt * 1.7f * speed
@@ -437,15 +440,28 @@ fun OrbSphere(
         }
     }
     val waveMeasure = remember { PathMeasure() }
+    val artReveal = remember { Path() }
+    val holePath = remember { Path() }
+    val artClip = remember { Path() }
 
     // Cover art fades in over a filled body; the last art is kept so it can fade back out.
     var shownArt by remember { mutableStateOf<ImageBitmap?>(null) }
     if (coverArt != null && coverArt !== shownArt) shownArt = coverArt
+    // Cover art grows out of the centre while the face is sucked into it; when it stops, the
+    // face grows back out and pushes the art off the edge. [artIncoming] says which way.
+    val artIncoming = coverArt != null && state != OrbState.Sleep
     val artShow by animateFloatAsState(
-        targetValue = if (coverArt != null && state != OrbState.Sleep) 1f else 0f,
-        animationSpec = tween(500),
+        targetValue = if (artIncoming) 1f else 0f,
+        animationSpec = tween(ArtRevealMs, easing = FastOutSlowInEasing),
         label = "art",
     )
+    // The art hitting the orb's edge knocks the visualizer dots outward.
+    LaunchedEffect(artIncoming) {
+        if (artIncoming) {
+            delay(ArtHitsEdgeMs)
+            if (playing) sea[Kick] = 1f
+        }
+    }
     val rim by animateColorAsState(
         targetValue = accent ?: if (playing) Color.White else Color(0xFF8E9099),
         animationSpec = tween(600),
@@ -653,7 +669,21 @@ fun OrbSphere(
                 // soft scrim so the face stays readable on any artwork.
                 val art = shownArt
                 if (!isSleep && art != null && artShow > 0.01f) {
-                    clipPath(bodyPath) {
+                    // Arriving: a disc growing from the centre. Leaving: a ring whose hole grows
+                    // from the centre until it is pushed off the edge.
+                    val reach = r * 1.45f
+                    artReveal.rewind()
+                    if (artIncoming) {
+                        artReveal.addOval(Rect(body, artShow * reach))
+                    } else {
+                        artReveal.addRect(Rect(body, reach * 2f))
+                        holePath.rewind()
+                        holePath.addOval(Rect(body, (1f - artShow) * reach))
+                        artReveal.op(artReveal, holePath, PathOperation.Difference)
+                    }
+                    artClip.rewind()
+                    artClip.op(bodyPath, artReveal, PathOperation.Intersect)
+                    clipPath(artClip) {
                         val b = bodyPath.getBounds()
                         val side = maxOf(b.width, b.height)
                         val srcSide = min(art.width, art.height)
@@ -669,7 +699,6 @@ fun OrbSphere(
                                 (b.center.y - side / 2f).toInt(),
                             ),
                             dstSize = IntSize(side.toInt() + 1, side.toInt() + 1),
-                            alpha = artShow,
                         )
                         drawCircle(
                             brush = Brush.radialGradient(
@@ -679,7 +708,6 @@ fun OrbSphere(
                             ),
                             radius = r * 1.6f,
                             center = body,
-                            alpha = artShow,
                         )
                     }
                     drawPath(
@@ -690,15 +718,16 @@ fun OrbSphere(
                     )
                 }
 
-                // The face makes way for cover art, fading out as the art fades in.
-                val faceAlpha = 1f - artShow
-                if (!isSleep && faceAlpha > 0.01f) {
-                    val faceLayer = faceAlpha < 0.99f
+                // The face is sucked into the centre as the art arrives, and grows back out of it
+                // when the art leaves.
+                val faceScale = 1f - artShow
+                if (!isSleep && faceScale > 0.01f) {
+                    val faceLayer = faceScale < 0.99f
                     if (faceLayer) {
-                        drawContext.canvas.saveLayer(
-                            Rect(Offset.Zero, size),
-                            Paint().apply { alpha = faceAlpha },
-                        )
+                        drawContext.canvas.save()
+                        drawContext.canvas.translate(body.x, body.y)
+                        drawContext.canvas.scale(faceScale, faceScale)
+                        drawContext.canvas.translate(-body.x, -body.y)
                     }
                     val placement = eyePlacement(shape)
                     val eyeDx = r * placement[0]
@@ -894,7 +923,7 @@ private fun DrawScope.drawDotRing(
                 0.3f * sin(5f * theta + sea[Phase2]) +
                 0.15f * sin(9f * theta - sea[Phase3])
             )
-        val level = (band * 0.65f + sea[WaveAmp] * crest * 1.2f).coerceIn(0f, 1f)
+        val level = (band * 0.65f + sea[WaveAmp] * crest * 1.2f + sea[Kick] * 0.8f).coerceIn(0f, 1f)
         val lit = level * DotsPerColumn
         val stagger = if (i % 2 == 1) step * 0.5f else 0f
         // Loud columns also swell their dots, so peaks read as bursts rather than lines.
@@ -922,7 +951,12 @@ private const val Phase1 = 1
 private const val Phase2 = 2
 private const val Phase3 = 3
 private const val SeaSlow = 4
-private const val SeaSize = 5
+private const val Kick = 5
+private const val SeaSize = 6
+
+private const val ArtRevealMs = 550
+/** About when the growing art reaches the body's edge, with [ArtRevealMs] and its easing. */
+private const val ArtHitsEdgeMs = 230L
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

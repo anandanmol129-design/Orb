@@ -33,8 +33,8 @@ android {
         applicationId = "com.anmol.orb"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.toIntOrNull() ?: 2026112201
-        versionName = "0.4.10"
+        versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.toIntOrNull() ?: 2026112202
+        versionName = "0.4.11"
         signingConfig = signingConfigs.getByName("debug")
         ndk {
             // Phones (ARM) and the x86_64 emulator. The wake word's native speech engine is

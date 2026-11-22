@@ -792,8 +792,9 @@ private fun blinkSpec(leadMs: Int): KeyframesSpec<Float> = keyframes {
 /**
  * Draws the music visualizer: [DotColumns] columns of dots standing on the body outline, each
  * lit outward as far as its spectrum band reaches (bass at the bottom, highs at the top,
- * mirrored left and right). The innermost dot always glows faintly so the ring reads at rest;
- * the tip dot fades in and out so the columns grow smoothly. Odd columns sit half a step out
+ * mirrored left and right). Columns range from [MinDotsPerColumn] dots when quiet to
+ * [DotsPerColumn] dots when loud, a full column reaching [MaxColumnReach] times the radius out
+ * from the body. The tip dot fades in and out so the columns grow smoothly. Odd columns sit half a step out
  * for a sparkling, staggered look. Allocation-free.
  */
 private fun DrawScope.drawDotRing(
@@ -810,8 +811,8 @@ private fun DrawScope.drawDotRing(
     if (len <= 0f) return
     val last = levels.size - 1
     val gap = r * 0.1f
-    val step = r * 0.068f
-    val dot = r * 0.024f
+    val step = (r * MaxColumnReach - gap) / (DotsPerColumn - 1)
+    val dot = r * 0.03f
     for (i in 0 until DotColumns) {
         val d = len * i / DotColumns
         val p = measure.getPosition(d)
@@ -832,12 +833,14 @@ private fun DrawScope.drawDotRing(
         val a = levels[last - lo]
         val b = levels[last - hi]
         val level = a + (b - a) * (f - lo)
-        val lit = level * DotsPerColumn
+        val lit = MinDotsPerColumn + level * (DotsPerColumn - MinDotsPerColumn)
         val stagger = if (i % 2 == 1) step * 0.5f else 0f
         // Loud columns also swell their dots, so peaks read as bursts rather than lines.
         val swell = 0.8f + 0.5f * level
         for (k in 0 until DotsPerColumn) {
-            val on = if (k == 0) maxOf(0.3f, lit.coerceAtMost(1f)) else (lit - k).coerceIn(0f, 1f)
+            // The base dots always show, faint at rest and brighter as the band gets louder.
+            val on = if (k < MinDotsPerColumn) 0.35f + 0.65f * (level * 3f).coerceAtMost(1f)
+            else (lit - k).coerceIn(0f, 1f)
             if (on <= 0.01f) break
             val off = gap + stagger + k * step
             drawCircle(
@@ -852,6 +855,10 @@ private fun DrawScope.drawDotRing(
 
 private const val DotColumns = 84
 private const val DotsPerColumn = 10
+private const val MinDotsPerColumn = 2
+
+/** How far a full column reaches out from the body, in body radii. */
+private const val MaxColumnReach = 1.5f
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

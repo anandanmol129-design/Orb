@@ -1,5 +1,7 @@
 package de.mm20.launcher2.ui.settings.orb
 
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.pm.PackageManager
@@ -71,6 +73,7 @@ import de.mm20.launcher2.applications.AppRepository
 import kotlinx.coroutines.flow.map
 import androidx.core.content.ContextCompat
 import de.mm20.launcher2.orb.MediaRingAction
+import de.mm20.launcher2.orb.MediaRingLayout
 import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.orb.MediaSkipOptions
 import de.mm20.launcher2.orb.OrbFill
@@ -142,6 +145,8 @@ fun OrbSettingsScreen(
     var mediaRingEnabled by remember { mutableStateOf(pieRepository.mediaRingEnabled()) }
     var mediaCoverArt by remember { mutableStateOf(pieRepository.mediaCoverArt()) }
     var mediaSlots by remember { mutableStateOf(pieRepository.mediaRing()) }
+    var mediaArc by remember { mutableStateOf(pieRepository.mediaArc()) }
+    var mediaLayout by remember { mutableStateOf(pieRepository.mediaRingLayout()) }
     var rewindSeconds by remember { mutableStateOf(pieRepository.mediaRewindSeconds()) }
     var forwardSeconds by remember { mutableStateOf(pieRepository.mediaForwardSeconds()) }
     var audioGranted by remember {
@@ -551,8 +556,8 @@ fun OrbSettingsScreen(
                 OutlinedCard {
                     Column(Modifier.padding(16.dp)) {
                         SwitchRow(
-                            title = "Media controls ring",
-                            subtitle = "While music plays, a second ring of controls appears outside the pie. Drag out to it and release.",
+                            title = "Media controls",
+                            subtitle = "While music plays, media controls appear around the pie. Drag out to one and release.",
                             checked = mediaRingEnabled,
                             onCheckedChange = {
                                 mediaRingEnabled = it
@@ -566,25 +571,57 @@ fun OrbSettingsScreen(
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                MediaRingLayout.entries.forEach { layout ->
+                                    FilterChip(
+                                        selected = mediaLayout == layout,
+                                        onClick = {
+                                            mediaLayout = layout
+                                            pieRepository.saveMediaRingLayout(layout)
+                                        },
+                                        label = { Text(layout.label) },
+                                    )
+                                }
+                            }
                             Text(
-                                "Tap a position to choose its control.",
+                                if (mediaLayout == MediaRingLayout.Arc) {
+                                    "Controls sit side by side above the orb. Tap a position to choose its control; empty ones close the gap."
+                                } else {
+                                    "Each control sits at its own spot around the orb. Tap a position to choose its control."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.size(8.dp))
-                            MediaRingEditor(
-                                slots = mediaSlots,
-                                rewindSeconds = rewindSeconds,
-                                forwardSeconds = forwardSeconds,
-                                onChange = { slot, action ->
-                                    pieRepository.saveMediaRingSlot(slot, action)
+                            if (mediaLayout == MediaRingLayout.Arc) {
+                                MediaArcEditor(
+                                    actions = mediaArc,
+                                    rewindSeconds = rewindSeconds,
+                                    forwardSeconds = forwardSeconds,
+                                    onChange = { index, action ->
+                                        pieRepository.saveMediaArcSlot(index, action)
+                                        mediaArc = pieRepository.mediaArc()
+                                    },
+                                )
+                                TextButton(onClick = {
+                                    pieRepository.resetMediaArc()
+                                    mediaArc = pieRepository.mediaArc()
+                                }) { Text("Reset arrangement") }
+                            } else {
+                                MediaRingEditor(
+                                    slots = mediaSlots,
+                                    rewindSeconds = rewindSeconds,
+                                    forwardSeconds = forwardSeconds,
+                                    onChange = { slot, action ->
+                                        pieRepository.saveMediaRingSlot(slot, action)
+                                        mediaSlots = pieRepository.mediaRing()
+                                    },
+                                )
+                                TextButton(onClick = {
+                                    pieRepository.resetMediaRing()
                                     mediaSlots = pieRepository.mediaRing()
-                                },
-                            )
-                            TextButton(onClick = {
-                                pieRepository.resetMediaRing()
-                                mediaSlots = pieRepository.mediaRing()
-                            }) { Text("Reset arrangement") }
+                                }) { Text("Reset arrangement") }
+                            }
                             Spacer(Modifier.size(8.dp))
                             SkipChooser(
                                 title = "Skip back",
@@ -739,7 +776,7 @@ private fun MediaRingEditor(
                             )
                         } else {
                             SlotCell(
-                                slot = slot,
+                                title = slot.label,
                                 action = slots.getValue(slot),
                                 rewindSeconds = rewindSeconds,
                                 forwardSeconds = forwardSeconds,
@@ -755,11 +792,13 @@ private fun MediaRingEditor(
 
 @Composable
 private fun SlotCell(
-    slot: MediaRingSlot,
+    title: String,
     action: MediaRingAction,
     rewindSeconds: Int,
     forwardSeconds: Int,
     onPick: (MediaRingAction) -> Unit,
+    compact: Boolean = false,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
 ) {
     var expanded by remember { mutableStateOf(false) }
     fun name(a: MediaRingAction) = when (a) {
@@ -771,7 +810,7 @@ private fun SlotCell(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .background(
                 if (empty) MaterialTheme.colorScheme.surfaceContainerLow
                 else MaterialTheme.colorScheme.secondaryContainer
@@ -781,7 +820,7 @@ private fun SlotCell(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (empty) "—" else name(action),
+            text = if (empty) "—" else if (compact) shortName(action, rewindSeconds, forwardSeconds) else name(action),
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             maxLines = 2,
@@ -791,7 +830,7 @@ private fun SlotCell(
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             Text(
-                slot.label,
+                title,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -807,6 +846,64 @@ private fun SlotCell(
             }
         }
     }
+}
+
+/** The arc positions drawn as they appear: side by side on an arc above a small orb. */
+@Composable
+private fun MediaArcEditor(
+    actions: List<MediaRingAction>,
+    rewindSeconds: Int,
+    forwardSeconds: Int,
+    onChange: (Int, MediaRingAction) -> Unit,
+) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxWidth()
+            .height(200.dp),
+    ) {
+        val cell = 52.dp
+        val orb = 64.dp
+        val w = maxWidth
+        val cx = w / 2
+        val cy = maxHeight - orb / 2
+        val radius = minOf(w / 2 - cell / 2, maxHeight - orb / 2 - cell / 2)
+        Box(
+            Modifier
+                .offset(x = cx - orb / 2, y = cy - orb / 2)
+                .size(orb)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        val n = actions.size
+        val span = 150f
+        actions.forEachIndexed { i, action ->
+            val deg = -90f - span / 2 + span * i / (n - 1).coerceAtLeast(1)
+            val rad = Math.toRadians(deg.toDouble())
+            val x = cx + radius * kotlin.math.cos(rad).toFloat() - cell / 2
+            val y = cy + radius * kotlin.math.sin(rad).toFloat() - cell / 2
+            Box(Modifier.offset(x = x, y = y).size(cell)) {
+                SlotCell(
+                    title = "Position ${i + 1} from the left",
+                    action = action,
+                    rewindSeconds = rewindSeconds,
+                    forwardSeconds = forwardSeconds,
+                    onPick = { onChange(i, it) },
+                    compact = true,
+                    shape = CircleShape,
+                )
+            }
+        }
+    }
+}
+
+private fun shortName(a: MediaRingAction, rewindSeconds: Int, forwardSeconds: Int) = when (a) {
+    MediaRingAction.None -> "—"
+    MediaRingAction.OpenApp -> "Open"
+    MediaRingAction.PlayPause -> "Play"
+    MediaRingAction.Previous -> "Prev"
+    MediaRingAction.Next -> "Next"
+    MediaRingAction.Rewind -> "−${rewindSeconds}s"
+    MediaRingAction.Forward -> "+${forwardSeconds}s"
 }
 
 @Composable

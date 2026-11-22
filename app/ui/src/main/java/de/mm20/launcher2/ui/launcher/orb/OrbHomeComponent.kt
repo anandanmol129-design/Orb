@@ -61,6 +61,7 @@ import de.mm20.launcher2.music.MusicService
 import de.mm20.launcher2.permissions.PermissionGroup
 import de.mm20.launcher2.permissions.PermissionsManager
 import de.mm20.launcher2.orb.MediaRingAction
+import de.mm20.launcher2.orb.MediaRingLayout
 import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.orb.OrbFill
 import de.mm20.launcher2.orb.pie.PieActionType
@@ -199,13 +200,16 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var mediaRingEnabled by remember { mutableStateOf(pieRepository.mediaRingEnabled()) }
         var mediaCoverArt by remember { mutableStateOf(pieRepository.mediaCoverArt()) }
         var mediaSlots by remember { mutableStateOf(pieRepository.mediaRing()) }
+        var mediaArc by remember { mutableStateOf(pieRepository.mediaArc()) }
+        var mediaLayout by remember { mutableStateOf(pieRepository.mediaRingLayout()) }
         var rewindSeconds by remember { mutableIntStateOf(pieRepository.mediaRewindSeconds()) }
         var forwardSeconds by remember { mutableIntStateOf(pieRepository.mediaForwardSeconds()) }
-        var mediaSelected by remember { mutableStateOf<MediaRingSlot?>(null) }
+        var mediaSelected by remember { mutableStateOf<Int?>(null) }
         var mediaPromptDismissed by remember { mutableStateOf(pieRepository.mediaAccessPromptDismissed()) }
         val audio = rememberOrbAudio(enabled = media.playing && !sleeping)
         val showMediaRing = mediaRingEnabled && media.hasSession &&
-            mediaSlots.values.any { it != MediaRingAction.None }
+            (if (mediaLayout == MediaRingLayout.Arc) mediaArc else mediaSlots.values)
+                .any { it != MediaRingAction.None }
 
         // Re-read the orb state when the settings activity returns, since it may have been
         // changed there (shape, fill, menu items) or replaced wholesale by a backup restore.
@@ -223,6 +227,8 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     mediaRingEnabled = pieRepository.mediaRingEnabled()
                     mediaCoverArt = pieRepository.mediaCoverArt()
                     mediaSlots = pieRepository.mediaRing()
+                    mediaArc = pieRepository.mediaArc()
+                    mediaLayout = pieRepository.mediaRingLayout()
                     rewindSeconds = pieRepository.mediaRewindSeconds()
                     forwardSeconds = pieRepository.mediaForwardSeconds()
                     if (!editMode) {
@@ -461,7 +467,9 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     right = width - ringMargin,
                     bottom = height - with(density) { insets.calculateBottomPadding().toPx() } - ringMargin,
                 ),
-                slots = mediaSlots,
+                layout = mediaLayout,
+                ring = mediaSlots,
+                arc = mediaArc,
             )
             val ringActive = showMediaRing && !sleeping
 
@@ -571,7 +579,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                             }
                         }
                     }
-                    .pointerInput(sleeping, items, confinedRadius, ringActive, ringGeometry, mediaSlots) {
+                    .pointerInput(sleeping, items, confinedRadius, ringActive, ringGeometry) {
                         var tapCount = 0
                         var tapDebounce: Job? = null
                         // How long a tap waits for a follow-up tap. Only paid when a double or
@@ -677,10 +685,10 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 if (up != null) {
                                     up.consume()
                                     if (ringActive) {
-                                        val slot = mediaRingSelection(up.position, ringGeometry, mediaSlots)
+                                        val slot = mediaRingSelection(up.position, ringGeometry)
                                         if (slot != null) {
                                             selected = -1
-                                            performMedia(mediaSlots.getValue(slot))
+                                            performMedia(ringGeometry.actions[slot])
                                             return@awaitEachGesture
                                         }
                                     }
@@ -726,7 +734,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                     }
                                     if (!sleeping) {
                                         val slot = if (ringActive) {
-                                            mediaRingSelection(pointer, ringGeometry, mediaSlots)
+                                            mediaRingSelection(pointer, ringGeometry)
                                         } else null
                                         mediaSelected = slot
                                         selected = if (slot != null) -1 else pieSelectionIndex(
@@ -764,7 +772,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 // Dragged out to the media ring.
                                 mediaSlot != null && moved -> {
                                     tapCount = 0
-                                    performMedia(mediaSlots.getValue(mediaSlot))
+                                    performMedia(ringGeometry.actions[mediaSlot])
                                 }
 
                                 // A short press that stayed put is a tap wherever it landed,
@@ -842,7 +850,6 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     )
                     if (ringActive) {
                         MediaRing(
-                            slots = mediaSlots,
                             geometry = ringGeometry,
                             selected = mediaSelected,
                             playing = media.playing,
@@ -900,7 +907,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                 }
 
                 val label = when {
-                    pieOpen && mediaSelected != null -> mediaSlots[mediaSelected]
+                    pieOpen && mediaSelected != null -> ringGeometry.actions.getOrNull(mediaSelected!!)
                         ?.hoverLabel(media.playing, rewindSeconds, forwardSeconds)
                     pieOpen && selected in items.indices -> items[selected].label
                     pieOpen && ringActive && media.title != null ->

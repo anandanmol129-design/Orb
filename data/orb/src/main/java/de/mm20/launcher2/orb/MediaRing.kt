@@ -29,5 +29,16 @@ enum class MediaRingSlot(val label: String, val angleDeg: Float) {
     TopLeft("Top left", -135f),
 }
 
+/** How the media controls are arranged around the orb. */
+enum class MediaRingLayout(val label: String) {
+    /** Side by side on an arc above the orb, in the order of the arc's positions. */
+    Arc("Arc"),
+    /** Each control at its own direction around the orb ([MediaRingSlot]). */
+    Ring("Ring"),
+}
+
+/** How many positions the arc layout has. */
+const val MediaArcSize = 6
+
 /** Skip durations offered for the skip back / skip forward controls, in seconds. */
 val MediaSkipOptions = listOf(5, 10, 15, 30, 60)

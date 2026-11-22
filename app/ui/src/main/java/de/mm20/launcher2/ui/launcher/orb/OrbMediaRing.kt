@@ -30,10 +30,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import de.mm20.launcher2.orb.MediaRingAction
+import de.mm20.launcher2.orb.MediaRingLayout
 import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.ui.R
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -41,24 +43,25 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Where the media ring sits: a circle of [radius] around the pie, with each active slot at
- * [angles] (degrees, clockwise from the right). Usually that is the slot's own direction; see
- * [mediaRingGeometry] for when the orb is too close to a screen edge.
+ * Where the media controls sit: [actions] (only non-empty ones) at [angles] (degrees,
+ * clockwise from the right) on a circle of [radius] around the pie. Controls are identified by
+ * their index in [actions].
  */
 data class MediaRingGeometry(
     val center: Offset,
     val radius: Float,
     val pieRadius: Float,
-    val angles: Map<MediaRingSlot, Float>,
+    val actions: List<MediaRingAction>,
+    val angles: List<Float>,
 ) {
-    fun position(slot: MediaRingSlot): Offset {
-        val a = (angles[slot] ?: slot.angleDeg) * PI.toFloat() / 180f
+    fun position(index: Int): Offset {
+        val a = angles[index] * PI.toFloat() / 180f
         return Offset(center.x + radius * cos(a), center.y + radius * sin(a))
     }
 
     /** Half the angle between neighbouring controls, the reach of each one when picking. */
     val pickRangeDeg: Float = run {
-        val sorted = angles.values.sorted()
+        val sorted = angles.sorted()
         if (sorted.size < 2) return@run 22.5f
         var minGap = 360f
         for (i in sorted.indices) {
@@ -70,10 +73,15 @@ data class MediaRingGeometry(
 }
 
 /**
- * Lays the ring out around [center]. Controls keep the user's arrangement whenever every one
- * of them fits inside [bounds]. When the orb sits near an edge, the ones that would fall off
- * screen are not squeezed onto the pie; instead all controls are spread, in their arrangement
- * order, across the widest stretch of the ring that is on screen.
+ * Lays the media controls out around [center].
+ *
+ * [MediaRingLayout.Arc]: the non-empty [arc] controls sit side by side, in order from left to
+ * right, on an arc above the orb; if that doesn't fit on screen, below it, then beside it.
+ *
+ * [MediaRingLayout.Ring]: each [ring] control sits at its own direction around the orb.
+ *
+ * Either way, when controls would fall off screen they are spread, in order, across the widest
+ * stretch of the circle that is on screen.
  */
 fun mediaRingGeometry(
     center: Offset,
@@ -81,9 +89,10 @@ fun mediaRingGeometry(
     radius: Float,
     itemRadius: Float,
     bounds: Rect,
-    slots: Map<MediaRingSlot, MediaRingAction>,
+    layout: MediaRingLayout,
+    ring: Map<MediaRingSlot, MediaRingAction>,
+    arc: List<MediaRingAction>,
 ): MediaRingGeometry {
-    val active = MediaRingSlot.entries.filter { (slots[it] ?: MediaRingAction.None) != MediaRingAction.None }
     fun fits(deg: Float): Boolean {
         val a = deg * PI.toFloat() / 180f
         val x = center.x + radius * cos(a)
@@ -91,15 +100,47 @@ fun mediaRingGeometry(
         return x - itemRadius >= bounds.left && x + itemRadius <= bounds.right &&
             y - itemRadius >= bounds.top && y + itemRadius <= bounds.bottom
     }
-    val defaults = active.associateWith { it.angleDeg }
-    if (active.isEmpty() || active.all { fits(it.angleDeg) }) {
-        return MediaRingGeometry(center, radius, pieRadius, defaults)
+    fun geometry(actions: List<MediaRingAction>, angles: List<Float>) =
+        MediaRingGeometry(center, radius, pieRadius, actions, angles)
+
+    val actions: List<MediaRingAction>
+    val preferred: List<Float>
+    when (layout) {
+        MediaRingLayout.Ring -> {
+            val active = MediaRingSlot.entries.filter { (ring[it] ?: MediaRingAction.None) != MediaRingAction.None }
+            actions = active.map { ring.getValue(it) }
+            preferred = active.map { it.angleDeg }
+            if (active.isEmpty() || preferred.all { fits(it) }) return geometry(actions, preferred)
+        }
+
+        MediaRingLayout.Arc -> {
+            actions = arc.filter { it != MediaRingAction.None }
+            if (actions.isEmpty()) return geometry(actions, emptyList())
+            // Neighbours just touch: the angle a control's width takes up on the circle.
+            val chord = (itemRadius * 1.7f / (2f * radius)).coerceAtMost(1f)
+            val step = (2f * asin(chord) * 180f / PI.toFloat()).coerceAtLeast(12f)
+            val n = actions.size
+            fun arcAround(dir: Float, sign: Float) =
+                List(n) { i -> dir + sign * (i - (n - 1) / 2f) * step }
+            // Above (left to right), below (still left to right), right, left.
+            val options = listOf(arcAround(-90f, 1f), arcAround(90f, -1f), arcAround(0f, 1f), arcAround(180f, -1f))
+            options.firstOrNull { o -> o.all { fits(it) } }?.let { return geometry(actions, it) }
+            preferred = options.first()
+        }
     }
 
+    return geometry(actions, spreadOnScreen(preferred, ::fits))
+}
+
+/**
+ * Spreads controls whose [preferred] angles don't all fit across the widest run of on-screen
+ * directions, keeping their clockwise order.
+ */
+private fun spreadOnScreen(preferred: List<Float>, fits: (Float) -> Boolean): List<Float> {
     // Widest run of on-screen directions, sampled every 2 degrees around the circle.
     val step = 2
     val ok = BooleanArray(360 / step) { fits(it * step.toFloat()) }
-    if (ok.none { it }) return MediaRingGeometry(center, radius, pieRadius, defaults)
+    if (ok.none { it }) return preferred
     var bestStart = 0
     var bestLen = 0
     if (ok.all { it }) {
@@ -127,16 +168,15 @@ fun mediaRingGeometry(
     val arcStart = bestStart * step.toFloat()
     val arcSpan = (bestLen - 1).coerceAtLeast(0) * step.toFloat()
 
-    // Keep the user's clockwise order, starting opposite the free arc so the order reads
-    // naturally across it.
+    // Keep the clockwise order, starting opposite the free arc so the order reads naturally
+    // across it.
     val mid = arcStart + arcSpan / 2f
     val cut = mid + 180f
-    val ordered = active.sortedBy { ((it.angleDeg - cut) % 360f + 360f) % 360f }
-    val n = ordered.size
-    val angles = ordered.mapIndexed { i, slot ->
-        slot to (arcStart + arcSpan * (i + 0.5f) / n)
-    }.toMap()
-    return MediaRingGeometry(center, radius, pieRadius, angles)
+    val order = preferred.indices.sortedBy { ((preferred[it] - cut) % 360f + 360f) % 360f }
+    val n = order.size
+    val angles = FloatArray(n)
+    order.forEachIndexed { rank, i -> angles[i] = arcStart + arcSpan * (rank + 0.5f) / n }
+    return angles.toList()
 }
 
 /**
@@ -145,9 +185,8 @@ fun mediaRingGeometry(
  */
 @Composable
 fun MediaRing(
-    slots: Map<MediaRingSlot, MediaRingAction>,
     geometry: MediaRingGeometry,
-    selected: MediaRingSlot?,
+    selected: Int?,
     playing: Boolean,
     rewindSeconds: Int,
     forwardSeconds: Int,
@@ -158,12 +197,11 @@ fun MediaRing(
     val highlight = accent ?: MaterialTheme.colorScheme.primary
     val onHighlight = if (highlight.luminance() > 0.5f) Color.Black else Color.White
     Box(modifier) {
-        for ((slot, action) in slots) {
-            if (action == MediaRingAction.None) continue
-            val isSelected = slot == selected
+        geometry.actions.forEachIndexed { index, action ->
+            val isSelected = index == selected
             val sizeDp = if (isSelected) 66.dp else 52.dp
             val sizePx = with(density) { sizeDp.toPx() }
-            val p = geometry.position(slot)
+            val p = geometry.position(index)
             val container = if (isSelected) {
                 highlight
             } else {
@@ -227,23 +265,20 @@ fun MediaRingAction.hoverLabel(playing: Boolean, rewindSeconds: Int, forwardSeco
 fun mediaRingSelection(
     pointer: Offset,
     geometry: MediaRingGeometry,
-    slots: Map<MediaRingSlot, MediaRingAction>,
-): MediaRingSlot? {
+): Int? {
     val dx = pointer.x - geometry.center.x
     val dy = pointer.y - geometry.center.y
     val threshold = geometry.pieRadius + (geometry.radius - geometry.pieRadius) * 0.5f
     if (hypot(dx, dy) < threshold) return null
     val deg = atan2(dy, dx) * 180f / PI.toFloat()
-    var best: MediaRingSlot? = null
+    var best: Int? = null
     var bestDiff = geometry.pickRangeDeg
-    for ((slot, action) in slots) {
-        if (action == MediaRingAction.None) continue
-        val at = geometry.angles[slot] ?: continue
+    geometry.angles.forEachIndexed { index, at ->
         var diff = abs(deg - at) % 360f
         if (diff > 180f) diff = 360f - diff
         if (diff <= bestDiff) {
             bestDiff = diff
-            best = slot
+            best = index
         }
     }
     return best

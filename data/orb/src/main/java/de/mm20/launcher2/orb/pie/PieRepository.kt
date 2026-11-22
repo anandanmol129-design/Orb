@@ -1,7 +1,9 @@
 package de.mm20.launcher2.orb.pie
 
 import android.content.Context
+import de.mm20.launcher2.orb.MediaArcSize
 import de.mm20.launcher2.orb.MediaRingAction
+import de.mm20.launcher2.orb.MediaRingLayout
 import de.mm20.launcher2.orb.MediaRingSlot
 import de.mm20.launcher2.orb.OrbFill
 import de.mm20.launcher2.orb.OrbShape
@@ -225,6 +227,30 @@ class PieRepository(
         }.apply()
     }
 
+    fun mediaRingLayout(): MediaRingLayout =
+        MediaRingLayout.entries.firstOrNull { it.name == prefs.getString(KEY_MEDIA_LAYOUT, null) }
+            ?: MediaRingLayout.Arc
+
+    fun saveMediaRingLayout(layout: MediaRingLayout) {
+        prefs.edit().putString(KEY_MEDIA_LAYOUT, layout.name).apply()
+    }
+
+    /** The action at each arc position, left to right. Positions never saved keep their default. */
+    fun mediaArc(): List<MediaRingAction> = List(MediaArcSize) { i ->
+        val stored = prefs.getString(KEY_MEDIA_ARC_PREFIX + i, null)
+        MediaRingAction.entries.firstOrNull { it.name == stored } ?: defaultMediaArc[i]
+    }
+
+    fun saveMediaArcSlot(index: Int, action: MediaRingAction) {
+        prefs.edit().putString(KEY_MEDIA_ARC_PREFIX + index, action.name).apply()
+    }
+
+    fun resetMediaArc() {
+        prefs.edit().apply {
+            repeat(MediaArcSize) { remove(KEY_MEDIA_ARC_PREFIX + it) }
+        }.apply()
+    }
+
     /** Whether the user dismissed the home-screen prompt for notification access. */
     fun mediaAccessPromptDismissed(): Boolean = prefs.getBoolean(KEY_MEDIA_PROMPT_DISMISSED, false)
 
@@ -257,6 +283,8 @@ class PieRepository(
         private const val KEY_MEDIA_RING = "media_ring_enabled"
         private const val KEY_MEDIA_ART = "media_cover_art"
         private const val KEY_MEDIA_SLOT_PREFIX = "media_slot_"
+        private const val KEY_MEDIA_LAYOUT = "media_layout"
+        private const val KEY_MEDIA_ARC_PREFIX = "media_arc_"
         private const val KEY_MEDIA_REWIND = "media_rewind_s"
         private const val KEY_MEDIA_FORWARD = "media_forward_s"
         private const val KEY_MEDIA_PROMPT_DISMISSED = "media_access_prompt_dismissed"
@@ -271,6 +299,16 @@ class PieRepository(
             MediaRingSlot.BottomLeft to MediaRingAction.Rewind,
             MediaRingSlot.Left to MediaRingAction.Previous,
             MediaRingSlot.TopLeft to MediaRingAction.None,
+        )
+
+        /** Left to right on the arc above the orb. */
+        val defaultMediaArc: List<MediaRingAction> = listOf(
+            MediaRingAction.PlayPause,
+            MediaRingAction.Rewind,
+            MediaRingAction.Previous,
+            MediaRingAction.OpenApp,
+            MediaRingAction.Next,
+            MediaRingAction.Forward,
         )
 
         fun defaults(): List<PieItem> = listOf(

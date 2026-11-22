@@ -34,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableLongStateOf
+import android.os.SystemClock
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -205,6 +207,10 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var rewindSeconds by remember { mutableIntStateOf(pieRepository.mediaRewindSeconds()) }
         var forwardSeconds by remember { mutableIntStateOf(pieRepository.mediaForwardSeconds()) }
         var mediaSelected by remember { mutableStateOf<Int?>(null) }
+        // Direction of the last skip from Orb's own controls; track changes from anywhere else
+        // (or long after a skip) count as "next".
+        var skipDir by remember { mutableIntStateOf(1) }
+        var skipAt by remember { mutableLongStateOf(0L) }
         var mediaPromptDismissed by remember { mutableStateOf(pieRepository.mediaAccessPromptDismissed()) }
         val audio = rememberOrbAudio(enabled = media.playing && !sleeping)
         val showMediaRing = mediaRingEnabled && media.hasSession &&
@@ -383,8 +389,16 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             when (action) {
                 MediaRingAction.None -> {}
                 MediaRingAction.PlayPause -> musicService.togglePause()
-                MediaRingAction.Previous -> musicService.previous()
-                MediaRingAction.Next -> musicService.next()
+                MediaRingAction.Previous -> {
+                    skipDir = -1
+                    skipAt = SystemClock.uptimeMillis()
+                    musicService.previous()
+                }
+                MediaRingAction.Next -> {
+                    skipDir = 1
+                    skipAt = SystemClock.uptimeMillis()
+                    musicService.next()
+                }
                 MediaRingAction.OpenApp -> runCatching {
                     musicService.openPlayer()?.sendWithBackgroundPermission(context)
                 }
@@ -510,6 +524,8 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         fill = orbFill,
                         playing = media.playing,
                         coverArt = if (mediaCoverArt) media.art else null,
+                        trackKey = media.title?.let { it to media.artist },
+                        skipDirection = if (SystemClock.uptimeMillis() - skipAt < SkipMemoryMs) skipDir else 1,
                         accent = media.accent,
                         audio = audio,
                     )
@@ -822,6 +838,8 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     fill = orbFill,
                     playing = media.playing,
                     coverArt = if (mediaCoverArt) media.art else null,
+                    trackKey = media.title?.let { it to media.artist },
+                    skipDirection = if (SystemClock.uptimeMillis() - skipAt < SkipMemoryMs) skipDir else 1,
                     accent = media.accent,
                     audio = audio,
                     pressed = orbPressed,
@@ -1083,3 +1101,6 @@ private fun replaceFolder(
         item.copy(children = replaceFolder(item.children, id, transform))
     }
 }
+
+/** How long a skip from Orb's controls decides the direction of the next track flip. */
+private const val SkipMemoryMs = 4000L

@@ -2,6 +2,8 @@ package de.mm20.launcher2.ui.launcher.orb
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.animation.core.snap
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.AnimationSpec
@@ -97,6 +99,10 @@ fun OrbSphere(
     fill: OrbFill = OrbFill.Filled,
     playing: Boolean = false,
     coverArt: ImageBitmap? = null,
+    /** Identifies the playing track; a change while playing flips the orb to the new one. */
+    trackKey: Any? = null,
+    /** Which way the last track change went: 1 next (also when unknown), -1 previous. */
+    skipDirection: Int = 1,
     accent: Color? = null,
     audio: OrbAudio? = null,
     pressed: Boolean = false,
@@ -450,18 +456,38 @@ fun OrbSphere(
     // Cover art grows out of the centre while the face is sucked into it; when it stops, the
     // face grows back out and pushes the art off the edge. [artIncoming] says which way.
     val artIncoming = coverArt != null && state != OrbState.Sleep
+    // Track changes flip the orb over to the new track's art (or face), so the reveal
+    // animation is skipped while a flip runs.
+    val flip = remember { Animatable(1f) }
+    var flipDir by remember { mutableIntStateOf(1) }
+    var flipOldArt by remember { mutableStateOf<ImageBitmap?>(null) }
+    val lastTrack = remember { arrayOfNulls<Any>(1) }
+    val flipping = flip.value < 1f
     val artShow by animateFloatAsState(
         targetValue = if (artIncoming) 1f else 0f,
-        animationSpec = tween(ArtRevealMs, easing = FastOutSlowInEasing),
+        animationSpec = if (flipping) snap() else tween(ArtRevealMs, easing = FastOutSlowInEasing),
         label = "art",
     )
+    LaunchedEffect(trackKey) {
+        val old = lastTrack[0]
+        lastTrack[0] = trackKey
+        if (old != null && trackKey != null && old != trackKey && playing && state != OrbState.Sleep) {
+            // What the orb shows right now is the side that turns away.
+            flipOldArt = if (artShow > 0.5f) shownArt else null
+            flipDir = if (skipDirection < 0) -1 else 1
+            flip.snapTo(0f)
+            flip.animateTo(1f, tween(FlipMs, easing = FastOutSlowInEasing))
+        }
+    }
     // The art hitting the orb's edge knocks the visualizer dots outward.
     LaunchedEffect(artIncoming) {
-        if (artIncoming) {
+        if (artIncoming && !flipping) {
             delay(ArtHitsEdgeMs)
             if (playing) sea[Kick] = 1f
         }
     }
+    val flipCamera = remember { android.graphics.Camera() }
+    val flipMatrix = remember { android.graphics.Matrix() }
     val rim by animateColorAsState(
         targetValue = accent ?: if (playing) Color.White else Color(0xFF8E9099),
         animationSpec = tween(600),
@@ -667,18 +693,38 @@ fun OrbSphere(
                 }
                 // Cover art (filled and outline alike), centre-cropped into the body, with a
                 // soft scrim so the face stays readable on any artwork.
-                val art = shownArt
-                if (!isSleep && art != null && artShow > 0.01f) {
+                // A flip turns the art and face over horizontally: the old side for the first
+                // half, the new side after. Next turns right-to-left, previous left-to-right.
+                val f = flip.value
+                val oldSide = f < 0.5f
+                val showSide = if (oldSide) (if (flipOldArt != null) 1f else 0f) else artShow
+                val flipNative = drawContext.canvas.nativeCanvas
+                if (f < 1f) {
+                    val turn = (if (oldSide) f * 180f else f * 180f - 180f) * flipDir
+                    flipCamera.save()
+                    flipCamera.setLocation(0f, 0f, -16f)
+                    flipCamera.rotateY(turn)
+                    flipCamera.getMatrix(flipMatrix)
+                    flipCamera.restore()
+                    flipMatrix.preTranslate(-body.x, -body.y)
+                    flipMatrix.postTranslate(body.x, body.y)
+                    flipNative.save()
+                    flipNative.concat(flipMatrix)
+                }
+                val art = if (oldSide && f < 1f) flipOldArt else shownArt
+                if (!isSleep && art != null && showSide > 0.01f) {
                     // Arriving: a disc growing from the centre. Leaving: a ring whose hole grows
                     // from the centre until it is pushed off the edge.
                     val reach = r * 1.45f
                     artReveal.rewind()
-                    if (artIncoming) {
-                        artReveal.addOval(Rect(body, artShow * reach))
+                    if (showSide >= 0.999f) {
+                        artReveal.addRect(Rect(body, reach * 2f))
+                    } else if (artIncoming) {
+                        artReveal.addOval(Rect(body, showSide * reach))
                     } else {
                         artReveal.addRect(Rect(body, reach * 2f))
                         holePath.rewind()
-                        holePath.addOval(Rect(body, (1f - artShow) * reach))
+                        holePath.addOval(Rect(body, (1f - showSide) * reach))
                         artReveal.op(artReveal, holePath, PathOperation.Difference)
                     }
                     artClip.rewind()
@@ -713,14 +759,14 @@ fun OrbSphere(
                     drawPath(
                         path = bodyPath,
                         color = rim,
-                        alpha = artShow,
+                        alpha = showSide,
                         style = Stroke(width = r * 0.035f),
                     )
                 }
 
                 // The face is sucked into the centre as the art arrives, and grows back out of it
                 // when the art leaves.
-                val faceScale = 1f - artShow
+                val faceScale = 1f - showSide
                 if (!isSleep && faceScale > 0.01f) {
                     val faceLayer = faceScale < 0.99f
                     if (faceLayer) {
@@ -853,6 +899,7 @@ fun OrbSphere(
                     }
                     if (faceLayer) drawContext.canvas.restore()
                 }
+                if (f < 1f) flipNative.restore()
             }
         }
     }
@@ -954,9 +1001,10 @@ private const val SeaSlow = 4
 private const val Kick = 5
 private const val SeaSize = 6
 
-private const val ArtRevealMs = 550
+private const val ArtRevealMs = 1100
 /** About when the growing art reaches the body's edge, with [ArtRevealMs] and its easing. */
-private const val ArtHitsEdgeMs = 230L
+private const val ArtHitsEdgeMs = 460L
+private const val FlipMs = 700
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

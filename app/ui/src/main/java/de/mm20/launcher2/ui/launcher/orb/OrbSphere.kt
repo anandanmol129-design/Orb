@@ -2,7 +2,6 @@ package de.mm20.launcher2.ui.launcher.orb
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.animation.core.snap
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -38,6 +37,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.Path
@@ -472,11 +472,11 @@ fun OrbSphere(
         val old = lastTrack[0]
         lastTrack[0] = trackKey
         if (old != null && trackKey != null && old != trackKey && playing && state != OrbState.Sleep) {
-            // What the orb shows right now is the side that turns away.
+            // What the orb shows right now is the side the cars race over.
             flipOldArt = if (artShow > 0.5f) shownArt else null
             flipDir = if (skipDirection < 0) -1 else 1
             flip.snapTo(0f)
-            flip.animateTo(1f, tween(FlipMs, easing = FastOutSlowInEasing))
+            flip.animateTo(1f, tween(RaceMs, easing = LinearEasing))
         }
     }
     // The art hitting the orb's edge knocks the visualizer dots outward.
@@ -486,8 +486,8 @@ fun OrbSphere(
             if (playing) sea[Kick] = 1f
         }
     }
-    val flipCamera = remember { android.graphics.Camera() }
-    val flipMatrix = remember { android.graphics.Matrix() }
+    val raceSwept = remember { Path() }
+    val raceLane = remember { Path() }
     val rim by animateColorAsState(
         targetValue = accent ?: if (playing) Color.White else Color(0xFF8E9099),
         animationSpec = tween(600),
@@ -693,213 +693,252 @@ fun OrbSphere(
                 }
                 // Cover art (filled and outline alike), centre-cropped into the body, with a
                 // soft scrim so the face stays readable on any artwork.
-                // A flip turns the art and face over horizontally: the old side for the first
-                // half, the new side after. Next turns right-to-left, previous left-to-right.
-                val f = flip.value
-                val oldSide = f < 0.5f
-                val showSide = if (oldSide) (if (flipOldArt != null) 1f else 0f) else artShow
-                val flipNative = drawContext.canvas.nativeCanvas
-                if (f < 1f) {
-                    val turn = (if (oldSide) f * 180f else f * 180f - 180f) * flipDir
-                    flipCamera.save()
-                    flipCamera.setLocation(0f, 0f, -16f)
-                    flipCamera.rotateY(turn)
-                    flipCamera.getMatrix(flipMatrix)
-                    flipCamera.restore()
-                    flipMatrix.preTranslate(-body.x, -body.y)
-                    flipMatrix.postTranslate(body.x, body.y)
-                    flipNative.save()
-                    flipNative.concat(flipMatrix)
-                }
-                val art = if (oldSide && f < 1f) flipOldArt else shownArt
-                if (!isSleep && art != null && showSide > 0.01f) {
-                    // Arriving: a disc growing from the centre. Leaving: a ring whose hole grows
-                    // from the centre until it is pushed off the edge.
-                    val reach = r * 1.45f
-                    artReveal.rewind()
-                    if (showSide >= 0.999f) {
-                        artReveal.addRect(Rect(body, reach * 2f))
-                    } else if (artIncoming) {
-                        artReveal.addOval(Rect(body, showSide * reach))
-                    } else {
-                        artReveal.addRect(Rect(body, reach * 2f))
-                        holePath.rewind()
-                        holePath.addOval(Rect(body, (1f - showSide) * reach))
-                        artReveal.op(artReveal, holePath, PathOperation.Difference)
-                    }
-                    artClip.rewind()
-                    artClip.op(bodyPath, artReveal, PathOperation.Intersect)
-                    clipPath(artClip) {
-                        val b = bodyPath.getBounds()
-                        val side = maxOf(b.width, b.height)
-                        val srcSide = min(art.width, art.height)
-                        drawImage(
-                            image = art,
-                            srcOffset = IntOffset(
-                                (art.width - srcSide) / 2,
-                                (art.height - srcSide) / 2,
-                            ),
-                            srcSize = IntSize(srcSide, srcSide),
-                            dstOffset = IntOffset(
-                                (b.center.x - side / 2f).toInt(),
-                                (b.center.y - side / 2f).toInt(),
-                            ),
-                            dstSize = IntSize(side.toInt() + 1, side.toInt() + 1),
-                        )
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = ArtScrim,
-                                center = body,
-                                radius = r * 1.3f,
-                            ),
-                            radius = r * 1.6f,
-                            center = body,
-                        )
-                    }
-                    drawPath(
-                        path = bodyPath,
-                        color = rim,
-                        alpha = showSide,
-                        style = Stroke(width = r * 0.035f),
-                    )
-                }
-
-                // The face is sucked into the centre as the art arrives, and grows back out of it
-                // when the art leaves.
-                val faceScale = 1f - showSide
-                if (!isSleep && faceScale > 0.01f) {
-                    val faceLayer = faceScale < 0.99f
-                    if (faceLayer) {
-                        drawContext.canvas.save()
-                        drawContext.canvas.translate(body.x, body.y)
-                        drawContext.canvas.scale(faceScale, faceScale)
-                        drawContext.canvas.translate(-body.x, -body.y)
-                    }
-                    val placement = eyePlacement(shape)
-                    val eyeDx = r * placement[0]
-                    val eyeY = body.y + r * placement[1]
-                    val er = r * 0.11f
-                    val gx = gazeX * r * 0.38f
-                    val gy = gazeY * r * 0.38f
-
-                    // Blush: only on the filled body, where there is a cheek to colour.
-                    val blush = maxOf(glee, press * 0.6f, if (state == OrbState.Success) 1f else 0f)
-                    if (fill != OrbFill.Outline && blush > 0.02f) {
-                        val bw = r * 0.2f
-                        val bh = r * 0.11f
-                        for (s in Signs) {
-                            drawOval(
-                                color = BlushColor,
-                                topLeft = Offset(
-                                    body.x + s * eyeDx * 1.3f + gx * 0.6f - bw / 2f,
-                                    eyeY + r * 0.2f + gy * 0.6f - bh / 2f,
+                // One side of the orb: its cover art (revealed by [showSide]) and face.
+                fun drawSide(art: ImageBitmap?, showSide: Float) {
+                    if (!isSleep && art != null && showSide > 0.01f) {
+                        // Arriving: a disc growing from the centre. Leaving: a ring whose hole grows
+                        // from the centre until it is pushed off the edge.
+                        val reach = r * 1.45f
+                        artReveal.rewind()
+                        if (showSide >= 0.999f) {
+                            artReveal.addRect(Rect(body, reach * 2f))
+                        } else if (artIncoming) {
+                            artReveal.addOval(Rect(body, showSide * reach))
+                        } else {
+                            artReveal.addRect(Rect(body, reach * 2f))
+                            holePath.rewind()
+                            holePath.addOval(Rect(body, (1f - showSide) * reach))
+                            artReveal.op(artReveal, holePath, PathOperation.Difference)
+                        }
+                        artClip.rewind()
+                        artClip.op(bodyPath, artReveal, PathOperation.Intersect)
+                        clipPath(artClip) {
+                            val b = bodyPath.getBounds()
+                            val side = maxOf(b.width, b.height)
+                            val srcSide = min(art.width, art.height)
+                            drawImage(
+                                image = art,
+                                srcOffset = IntOffset(
+                                    (art.width - srcSide) / 2,
+                                    (art.height - srcSide) / 2,
                                 ),
-                                size = Size(bw, bh),
-                                alpha = 0.45f * blush,
+                                srcSize = IntSize(srcSide, srcSide),
+                                dstOffset = IntOffset(
+                                    (b.center.x - side / 2f).toInt(),
+                                    (b.center.y - side / 2f).toInt(),
+                                ),
+                                dstSize = IntSize(side.toInt() + 1, side.toInt() + 1),
+                            )
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = ArtScrim,
+                                    center = body,
+                                    radius = r * 1.3f,
+                                ),
+                                radius = r * 1.6f,
+                                center = body,
                             )
                         }
+                        drawPath(
+                            path = bodyPath,
+                            color = rim,
+                            alpha = showSide,
+                            style = Stroke(width = r * 0.035f),
+                        )
                     }
 
-                    when {
-                        state == OrbState.Success || glee > 0.35f -> {
-                            // Happy, closed-smile eyes.
-                            val arcR = r * 0.17f
-                            for (s in Signs) {
-                                val dx = s * eyeDx
-                                drawArc(
-                                    color = ink,
-                                    startAngle = 200f,
-                                    sweepAngle = 140f,
-                                    useCenter = false,
-                                    topLeft = Offset(body.x + dx - arcR, eyeY - arcR),
-                                    size = Size(arcR * 2, arcR * 2),
-                                    style = Stroke(width = r * 0.09f, cap = StrokeCap.Round),
-                                )
-                            }
+                    // The face is sucked into the centre as the art arrives, and grows back out of it
+                    // when the art leaves.
+                    val faceScale = 1f - showSide
+                    if (!isSleep && faceScale > 0.01f) {
+                        val faceLayer = faceScale < 0.99f
+                        if (faceLayer) {
+                            drawContext.canvas.save()
+                            drawContext.canvas.translate(body.x, body.y)
+                            drawContext.canvas.scale(faceScale, faceScale)
+                            drawContext.canvas.translate(-body.x, -body.y)
                         }
-                        state == OrbState.Error -> {
-                            // Wince: >_< chevrons.
-                            val w = er * 1.5f
-                            val h = er * 1.35f
-                            val stroke = r * 0.07f
+                        val placement = eyePlacement(shape)
+                        val eyeDx = r * placement[0]
+                        val eyeY = body.y + r * placement[1]
+                        val er = r * 0.11f
+                        val gx = gazeX * r * 0.38f
+                        val gy = gazeY * r * 0.38f
+
+                        // Blush: only on the filled body, where there is a cheek to colour.
+                        val blush = maxOf(glee, press * 0.6f, if (state == OrbState.Success) 1f else 0f)
+                        if (fill != OrbFill.Outline && blush > 0.02f) {
+                            val bw = r * 0.2f
+                            val bh = r * 0.11f
                             for (s in Signs) {
-                                val apex = Offset(body.x + s * eyeDx + gx, eyeY + gy)
-                                drawLine(ink, apex, apex + Offset(s * w, -h), stroke, cap = StrokeCap.Round)
-                                drawLine(ink, apex, apex + Offset(s * w, h), stroke, cap = StrokeCap.Round)
-                            }
-                        }
-                        else -> {
-                            // Two small black dots. They blink (squash) and look (shift their
-                            // gaze) but never wander from their position on the face.
-                            for (s in Signs) {
-                                val open = (if (s < 0f) openL else openR) * eyeScale
-                                val ec = Offset(body.x + s * eyeDx + gx, eyeY + gy)
                                 drawOval(
-                                    color = ink,
-                                    topLeft = Offset(ec.x - er, ec.y - er * open),
-                                    size = Size(er * 2f, er * 2f * open),
+                                    color = BlushColor,
+                                    topLeft = Offset(
+                                        body.x + s * eyeDx * 1.3f + gx * 0.6f - bw / 2f,
+                                        eyeY + r * 0.2f + gy * 0.6f - bh / 2f,
+                                    ),
+                                    size = Size(bw, bh),
+                                    alpha = 0.45f * blush,
                                 )
-                                if (fill != OrbFill.Outline && artShow < 0.5f && open > 0.55f) {
-                                    // Catch-light, offset up-left and along the gaze.
-                                    drawCircle(
-                                        color = Color.White,
-                                        radius = er * 0.3f,
-                                        center = ec + Offset(-er * 0.32f, -er * 0.38f * open),
+                            }
+                        }
+
+                        when {
+                            state == OrbState.Success || glee > 0.35f -> {
+                                // Happy, closed-smile eyes.
+                                val arcR = r * 0.17f
+                                for (s in Signs) {
+                                    val dx = s * eyeDx
+                                    drawArc(
+                                        color = ink,
+                                        startAngle = 200f,
+                                        sweepAngle = 140f,
+                                        useCenter = false,
+                                        topLeft = Offset(body.x + dx - arcR, eyeY - arcR),
+                                        size = Size(arcR * 2, arcR * 2),
+                                        style = Stroke(width = r * 0.09f, cap = StrokeCap.Round),
                                     )
                                 }
                             }
+                            state == OrbState.Error -> {
+                                // Wince: >_< chevrons.
+                                val w = er * 1.5f
+                                val h = er * 1.35f
+                                val stroke = r * 0.07f
+                                for (s in Signs) {
+                                    val apex = Offset(body.x + s * eyeDx + gx, eyeY + gy)
+                                    drawLine(ink, apex, apex + Offset(s * w, -h), stroke, cap = StrokeCap.Round)
+                                    drawLine(ink, apex, apex + Offset(s * w, h), stroke, cap = StrokeCap.Round)
+                                }
+                            }
+                            else -> {
+                                // Two small black dots. They blink (squash) and look (shift their
+                                // gaze) but never wander from their position on the face.
+                                for (s in Signs) {
+                                    val open = (if (s < 0f) openL else openR) * eyeScale
+                                    val ec = Offset(body.x + s * eyeDx + gx, eyeY + gy)
+                                    drawOval(
+                                        color = ink,
+                                        topLeft = Offset(ec.x - er, ec.y - er * open),
+                                        size = Size(er * 2f, er * 2f * open),
+                                    )
+                                    if (fill != OrbFill.Outline && artShow < 0.5f && open > 0.55f) {
+                                        // Catch-light, offset up-left and along the gaze.
+                                        drawCircle(
+                                            color = Color.White,
+                                            radius = er * 0.3f,
+                                            center = ec + Offset(-er * 0.32f, -er * 0.38f * open),
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    }
 
-                    // Brows.
-                    val browHalf = er * 1.15f
-                    for (s in Signs) {
-                        val browTilt = if (s < 0f) browTiltL else browTiltR
-                        val bcx = body.x + s * eyeDx + gx * 0.5f
-                        val bcy = eyeY - er * 2.8f - (browRaise + 0.03f * glee + 0.025f * yawn) * r
-                        rotate(browTilt, pivot = Offset(bcx, bcy)) {
-                            drawLine(
+                        // Brows.
+                        val browHalf = er * 1.15f
+                        for (s in Signs) {
+                            val browTilt = if (s < 0f) browTiltL else browTiltR
+                            val bcx = body.x + s * eyeDx + gx * 0.5f
+                            val bcy = eyeY - er * 2.8f - (browRaise + 0.03f * glee + 0.025f * yawn) * r
+                            rotate(browTilt, pivot = Offset(bcx, bcy)) {
+                                drawLine(
+                                    color = ink,
+                                    start = Offset(bcx - browHalf, bcy),
+                                    end = Offset(bcx + browHalf, bcy),
+                                    strokeWidth = r * 0.045f,
+                                    cap = StrokeCap.Round,
+                                )
+                            }
+                        }
+
+                        // Mouth. It rides along with the gaze like the rest of the face.
+                        val mcx = body.x + gx * 0.7f
+                        val mcy = eyeY + r * placement[2] + gy * 0.7f
+                        val gape = maxOf(mouthOpen, yawn)
+                        if (gape > 0.12f) {
+                            // Open: a small "o" that grows into a yawn.
+                            val rx = r * (0.06f + 0.05f * gape)
+                            val ry = r * 0.15f * gape
+                            drawOval(
                                 color = ink,
-                                start = Offset(bcx - browHalf, bcy),
-                                end = Offset(bcx + browHalf, bcy),
-                                strokeWidth = r * 0.045f,
-                                cap = StrokeCap.Round,
+                                topLeft = Offset(mcx - rx, mcy - ry * 0.6f),
+                                size = Size(rx * 2f, ry * 2f),
+                            )
+                        } else {
+                            // Closed: one stroke whose middle sags into a smile or arches into a
+                            // frown. An error makes it tremble.
+                            var curve = (smile + 0.5f * glee).coerceIn(-1f, 1f)
+                            if (state == OrbState.Error) curve += 0.15f * sin(fast * 5f)
+                            val half = r * (0.14f + 0.06f * abs(curve))
+                            val sag = r * 0.13f * curve
+                            mouthPath.rewind()
+                            mouthPath.moveTo(mcx - half, mcy - sag * 0.35f)
+                            mouthPath.quadraticTo(mcx, mcy + sag, mcx + half, mcy - sag * 0.35f)
+                            drawPath(
+                                path = mouthPath,
+                                color = ink,
+                                style = Stroke(width = r * 0.05f, cap = StrokeCap.Round),
                             )
                         }
+                        if (faceLayer) drawContext.canvas.restore()
                     }
-
-                    // Mouth. It rides along with the gaze like the rest of the face.
-                    val mcx = body.x + gx * 0.7f
-                    val mcy = eyeY + r * placement[2] + gy * 0.7f
-                    val gape = maxOf(mouthOpen, yawn)
-                    if (gape > 0.12f) {
-                        // Open: a small "o" that grows into a yawn.
-                        val rx = r * (0.06f + 0.05f * gape)
-                        val ry = r * 0.15f * gape
-                        drawOval(
-                            color = ink,
-                            topLeft = Offset(mcx - rx, mcy - ry * 0.6f),
-                            size = Size(rx * 2f, ry * 2f),
-                        )
-                    } else {
-                        // Closed: one stroke whose middle sags into a smile or arches into a
-                        // frown. An error makes it tremble.
-                        var curve = (smile + 0.5f * glee).coerceIn(-1f, 1f)
-                        if (state == OrbState.Error) curve += 0.15f * sin(fast * 5f)
-                        val half = r * (0.14f + 0.06f * abs(curve))
-                        val sag = r * 0.13f * curve
-                        mouthPath.rewind()
-                        mouthPath.moveTo(mcx - half, mcy - sag * 0.35f)
-                        mouthPath.quadraticTo(mcx, mcy + sag, mcx + half, mcy - sag * 0.35f)
-                        drawPath(
-                            path = mouthPath,
-                            color = ink,
-                            style = Stroke(width = r * 0.05f, cap = StrokeCap.Round),
-                        )
-                    }
-                    if (faceLayer) drawContext.canvas.restore()
                 }
-                if (f < 1f) flipNative.restore()
+
+                // A track change races the new side in around the orb: lanes from the centre out,
+                // each swept from the top, clockwise for next and anticlockwise for previous,
+                // with the outer lanes a little ahead. The old side shows where no car has been.
+                val f = flip.value
+                if (f < 1f) {
+                    val reach = r * 1.45f
+                    raceSwept.rewind()
+                    for (lane in 0 until RaceLanes) {
+                        val p = laneProgress(f, lane)
+                        if (p <= 0f) continue
+                        val sweep = (p * 360f).coerceAtMost(359.9f) * flipDir
+                        val outer = reach * (lane + 1) / RaceLanes
+                        val inner = reach * lane / RaceLanes
+                        raceLane.rewind()
+                        raceLane.moveTo(body.x, body.y - outer)
+                        raceLane.arcTo(Rect(body, outer), -90f, sweep, false)
+                        if (inner > 0f) {
+                            raceLane.arcTo(Rect(body, inner), -90f + sweep, -sweep, false)
+                        } else {
+                            raceLane.lineTo(body.x, body.y)
+                        }
+                        raceLane.close()
+                        raceSwept.addPath(raceLane)
+                    }
+                    clipPath(raceSwept, ClipOp.Difference) {
+                        drawSide(flipOldArt, if (flipOldArt != null) 1f else 0f)
+                    }
+                    clipPath(raceSwept) { drawSide(shownArt, artShow) }
+                    // The cars: a bright streak leading each lane.
+                    clipPath(bodyPath) {
+                        for (lane in 0 until RaceLanes) {
+                            val p = laneProgress(f, lane)
+                            if (p <= 0f || p >= 1f) continue
+                            val mid = reach * (lane + 0.5f) / RaceLanes
+                            val a = ((-90f + p * 360f * flipDir) * PI / 180f).toFloat()
+                            val tail = ((-90f + (p * 360f - 28f).coerceAtLeast(0f) * flipDir) * PI / 180f).toFloat()
+                            val head = Offset(body.x + mid * cos(a), body.y + mid * sin(a))
+                            val back = Offset(body.x + mid * cos(tail), body.y + mid * sin(tail))
+                            drawLine(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(rim.copy(alpha = 0f), rim),
+                                    start = back,
+                                    end = head,
+                                ),
+                                start = back,
+                                end = head,
+                                strokeWidth = r * 0.07f,
+                                cap = StrokeCap.Round,
+                            )
+                            drawCircle(color = Color.White, radius = r * 0.04f, center = head)
+                        }
+                    }
+                } else {
+                    drawSide(shownArt, artShow)
+                }
             }
         }
     }
@@ -1004,7 +1043,17 @@ private const val SeaSize = 6
 private const val ArtRevealMs = 1100
 /** About when the growing art reaches the body's edge, with [ArtRevealMs] and its easing. */
 private const val ArtHitsEdgeMs = 460L
-private const val FlipMs = 700
+private const val RaceMs = 1100
+private const val RaceLanes = 4
+
+/** Lane [lane]'s share of the lap at overall progress [f]: outer lanes start first. */
+private fun laneProgress(f: Float, lane: Int): Float {
+    val lead = lane * 0.07f
+    val start = 0.21f - lead
+    val t = ((f - start) / 0.79f).coerceIn(0f, 1f)
+    // Each car launches, cruises and brakes into the finish.
+    return t * t * (3f - 2f * t)
+}
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

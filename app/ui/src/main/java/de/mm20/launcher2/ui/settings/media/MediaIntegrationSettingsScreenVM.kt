@@ -81,6 +81,14 @@ class MediaIntegrationSettingsScreenVM : ViewModel(), KoinComponent {
         saveState()
     }
 
+    /** Checks every app, or unchecks them all if every one is already checked. */
+    fun toggleAll() {
+        val all = appList.value
+        val check = !all.all { it.isChecked }
+        appList.value = all.map { it.copy(isChecked = check) }
+        saveState()
+    }
+
     private fun saveState() {
         val allowList = mutableListOf<String>()
         val denyList = mutableListOf<String>()

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -63,6 +65,15 @@ fun MediaIntegrationSettingsScreen() {
     PreferenceScreen(
         stringResource(R.string.preference_media_integration),
         helpUrl = "https://kvaesitso.mm20.de/docs/user-guide/integrations/mediacontrol",
+        topBarActions = {
+            if (apps.isNotEmpty()) {
+                TextButton(onClick = { viewModel.toggleAll() }) {
+                    Text(
+                        if (apps.all { it.isChecked }) "Clear all" else "Select all"
+                    )
+                }
+            }
+        },
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         if (loading) {

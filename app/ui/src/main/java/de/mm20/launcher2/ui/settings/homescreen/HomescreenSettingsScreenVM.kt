@@ -167,13 +167,6 @@ class HomescreenSettingsScreenVM(
         uiSettings.setChargingAnimation(chargingAnimation)
     }
 
-    val widgetsOnHomeScreen = uiSettings.homeScreenWidgets
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
-
-    fun setWidgetsOnHomeScreen(widgetsOnHomeScreen: Boolean) {
-        uiSettings.setHomeScreenWidgets(widgetsOnHomeScreen)
-    }
-
     companion object : KoinComponent {
         val Factory = viewModelFactory {
             initializer {

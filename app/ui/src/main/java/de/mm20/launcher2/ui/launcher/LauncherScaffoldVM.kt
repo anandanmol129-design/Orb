@@ -13,6 +13,7 @@ import de.mm20.launcher2.preferences.WallpaperType
 import de.mm20.launcher2.preferences.ui.GestureSettings
 import de.mm20.launcher2.preferences.ui.UiSettings
 import de.mm20.launcher2.search.SavableSearchable
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -67,8 +68,9 @@ class LauncherScaffoldVM : ViewModel(), KoinComponent {
         .map { it != ScreenOrientation.Auto }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
 
-    val widgetsOnHomeScreen = uiSettings.homeScreenWidgets
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+    // Orb keeps widgets on their own page; the old "Widgets on home screen" switch is gone, so
+    // an install that had it on must not stay stuck with it.
+    val widgetsOnHomeScreen = MutableStateFlow<Boolean?>(false).asStateFlow()
 
     val autoFocusSearch = uiSettings.openKeyboardOnSearch
 

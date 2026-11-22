@@ -75,7 +75,6 @@ fun HomescreenSettingsScreen() {
     val dock by viewModel.dock.collectAsStateWithLifecycle(null)
     val dockRows by viewModel.dockRows.collectAsStateWithLifecycle(1)
     val fixedRotation by viewModel.fixedRotation.collectAsStateWithLifecycle(null)
-    val widgetsOnHomeScreen by viewModel.widgetsOnHomeScreen.collectAsStateWithLifecycle(null)
     val editButton by viewModel.widgetEditButton.collectAsStateWithLifecycle(null)
     val searchBarStyle by viewModel.searchBarStyle.collectAsStateWithLifecycle(null)
     val searchBarColor by viewModel.searchBarColor.collectAsStateWithLifecycle(null)
@@ -148,13 +147,6 @@ fun HomescreenSettingsScreen() {
                         }
                     )
                 }
-                SwitchPreference(
-                    title = stringResource(R.string.preference_widgets_on_home_screen),
-                    summary = stringResource(R.string.preference_widgets_on_home_screen_summary),
-                    value = widgetsOnHomeScreen == true,
-                    onValueChanged = {
-                        viewModel.setWidgetsOnHomeScreen(it)
-                    })
                 SwitchPreference(
                     title = stringResource(id = R.string.preference_edit_button),
                     summary = stringResource(id = R.string.preference_widgets_edit_button_summary),

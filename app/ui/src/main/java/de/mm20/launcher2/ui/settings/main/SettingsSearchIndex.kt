@@ -134,7 +134,6 @@ internal fun buildSettingsSearchIndex(res: Resources): List<SettingsSearchEntry>
         }
         subpage(R.string.preference_media_integration, MediaIntegrationSettingsRoute, R.string.preference_media_integration_summary)
         pref(R.string.preference_clockwidget_favorites_part, R.string.preference_clockwidget_favorites_part_summary)
-        pref(R.string.preference_widgets_on_home_screen)
         pref(R.string.preference_edit_button)
         pref(R.string.preference_category_searchbar)
         pref(R.string.preference_search_bar_style)

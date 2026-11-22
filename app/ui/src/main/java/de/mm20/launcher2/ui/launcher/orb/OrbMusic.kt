@@ -88,6 +88,8 @@ fun rememberOrbMedia(): State<OrbMedia> {
                 val soft = if (bmp.config == Bitmap.Config.HARDWARE) {
                     bmp.copy(Bitmap.Config.ARGB_8888, false)
                 } else bmp
+                // A player's stand-in artwork (a generic note icon) is no cover: keep the face.
+                if (isPlaceholderArt(soft)) return@withContext null
                 val accent = runCatching {
                     val p = Palette.from(soft).maximumColorCount(16).generate()
                     val swatch = p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.dominantSwatch
@@ -251,3 +253,31 @@ fun rememberOrbAudio(enabled: Boolean): OrbAudio {
 
 private const val MUSIC_POLL_MS = 250L
 private const val ART_HIDE_DELAY_MS = 1500L
+
+/**
+ * Whether [art] is a player's stand-in rather than real cover art: an icon with a see-through
+ * background, or a flat, colourless image (e.g. a grey note on a plain backdrop).
+ */
+internal fun isPlaceholderArt(art: Bitmap): Boolean {
+    val n = 24
+    val small = Bitmap.createScaledBitmap(art, n, n, true)
+    val px = IntArray(n * n)
+    small.getPixels(px, 0, n, 0, 0, n, n)
+    if (small !== art) small.recycle()
+    var seeThrough = 0
+    var colourful = 0
+    val counts = HashMap<Int, Int>()
+    val hsv = FloatArray(3)
+    for (c in px) {
+        if (android.graphics.Color.alpha(c) < 245) seeThrough++
+        android.graphics.Color.colorToHSV(c, hsv)
+        if (hsv[1] > 0.25f && hsv[2] > 0.15f) colourful++
+        // Coarse colour buckets, to see how much of the image is one flat colour.
+        val key = (((c shr 20) and 0xF) shl 8) or (((c shr 12) and 0xF) shl 4) or ((c shr 4) and 0xF)
+        counts[key] = (counts[key] ?: 0) + 1
+    }
+    val total = px.size.toFloat()
+    if (seeThrough / total > 0.1f) return true
+    val flat = (counts.values.maxOrNull() ?: 0) / total
+    return colourful / total < 0.03f && flat > 0.5f
+}

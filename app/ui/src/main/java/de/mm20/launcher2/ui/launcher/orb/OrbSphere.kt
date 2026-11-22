@@ -26,6 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -688,7 +690,16 @@ fun OrbSphere(
                     )
                 }
 
-                if (!isSleep) {
+                // The face makes way for cover art, fading out as the art fades in.
+                val faceAlpha = 1f - artShow
+                if (!isSleep && faceAlpha > 0.01f) {
+                    val faceLayer = faceAlpha < 0.99f
+                    if (faceLayer) {
+                        drawContext.canvas.saveLayer(
+                            Rect(Offset.Zero, size),
+                            Paint().apply { alpha = faceAlpha },
+                        )
+                    }
                     val placement = eyePlacement(shape)
                     val eyeDx = r * placement[0]
                     val eyeY = body.y + r * placement[1]
@@ -811,6 +822,7 @@ fun OrbSphere(
                             style = Stroke(width = r * 0.05f, cap = StrokeCap.Round),
                         )
                     }
+                    if (faceLayer) drawContext.canvas.restore()
                 }
             }
         }

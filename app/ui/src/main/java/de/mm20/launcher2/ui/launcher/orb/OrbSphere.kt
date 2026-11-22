@@ -893,7 +893,7 @@ private fun DrawScope.drawDotRing(
             val off = gap + stagger + k * step
             drawCircle(
                 color = color,
-                radius = dot * swell * (1f - 0.05f * k),
+                radius = dot * swell * (1f - 0.04f * k),
                 center = Offset(p.x + nx * off, p.y + ny * off),
                 alpha = on * amount,
             )
@@ -902,7 +902,7 @@ private fun DrawScope.drawDotRing(
 }
 
 private const val DotColumns = 84
-private const val DotsPerColumn = 10
+private const val DotsPerColumn = 13
 
 // Slots of the visualizer's sea state.
 private const val WaveAmp = 0

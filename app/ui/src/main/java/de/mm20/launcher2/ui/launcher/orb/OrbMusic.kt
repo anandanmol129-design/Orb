@@ -181,7 +181,9 @@ class OrbAudio {
             val shape = (((mag / peak) - 0.45f) / 0.55f).coerceIn(0f, 1f).pow(1.5f)
             val hit = (mag - avg[b]).coerceAtLeast(0f) / peak
             avg[b] += (mag - avg[b]) * 0.15f
-            levels[b] = (shape * 0.6f + hit * 4f).coerceIn(0f, 1f)
+            // Hits push a column out without snapping it fully, so the ring swells with the
+            // beat instead of flickering band by band.
+            levels[b] = (shape * 0.75f + hit * 1.5f).coerceIn(0f, 1f)
         }
     }
 

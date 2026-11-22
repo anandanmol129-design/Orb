@@ -40,6 +40,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -197,11 +201,14 @@ fun ClockWidget(
                             }
                         }
                         if (compact == true) {
+                            // The time matches the date's two rows: as tall and as wide.
+                            var dateSize by remember { mutableStateOf<DpSize?>(null) }
+                            val density = LocalDensity.current
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(end = 8.dp, bottom = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                verticalAlignment = Alignment.Top,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 PartWithWeather(
@@ -209,12 +216,23 @@ fun ClockWidget(
                                     compact = true,
                                     provider = partProvider,
                                     darkColors = darkColors,
+                                    onZoneSize = {
+                                        // The date is a text button: drop its 12dp × 8dp padding
+                                        // so the time matches the text itself.
+                                        dateSize = with(density) {
+                                            DpSize(
+                                                (it.width.toDp() - 24.dp).coerceAtLeast(48.dp),
+                                                (it.height.toDp() - 16.dp).coerceAtLeast(24.dp),
+                                            )
+                                        }
+                                    },
                                 )
                                 if (clockStyle !is ClockWidgetStyle.Empty) {
                                     Box(
                                         modifier = Modifier
                                             .padding(horizontal = 16.dp)
-                                            .height(56.dp)
+                                            .padding(top = 8.dp)
+                                            .height(dateSize?.height ?: 56.dp)
                                             .width(2.dp)
                                             .background(
                                                 LocalContentColor.current
@@ -222,7 +240,7 @@ fun ClockWidget(
                                     )
                                 }
                                 Box(
-                                    modifier = Modifier.clickable(
+                                    modifier = Modifier.padding(top = 8.dp).clickable(
                                         enabled = clockStyle !is ClockWidgetStyle.Empty,
                                         indication = null,
                                         interactionSource = remember { MutableInteractionSource() }
@@ -236,6 +254,7 @@ fun ClockWidget(
                                         darkColors = darkColors,
                                         width = size.first,
                                         height = size.second,
+                                        compactBox = dateSize,
                                     )
                                 }
                             }
@@ -383,6 +402,7 @@ private fun PartWithWeather(
     compact: Boolean,
     provider: PartProvider?,
     darkColors: Boolean,
+    onZoneSize: (IntSize) -> Unit = {},
 ) {
     val clockSettings: ClockWidgetSettings = koinInject()
     val showWeather by clockSettings.showWeather.collectAsState(initial = true)
@@ -401,7 +421,11 @@ private fun PartWithWeather(
         }
     } else {
         Column(modifier = modifier) {
-            if (provider != null) DynamicZone(compact = true, provider = provider)
+            if (provider != null) DynamicZone(
+                modifier = Modifier.onSizeChanged(onZoneSize),
+                compact = true,
+                provider = provider,
+            )
             // Lines up with the date button's text.
             Box(modifier = Modifier.padding(start = 12.dp)) { weather() }
         }

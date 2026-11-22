@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import de.mm20.launcher2.preferences.ClockWidgetStyle
 import de.mm20.launcher2.preferences.MeasurementSystem
@@ -68,17 +69,19 @@ fun ClockFace(
     width: Int? = null,
     height: Int? = null,
     modifier: Modifier = Modifier,
+    compactBox: DpSize? = null,
 ) {
     if (style == null || style is ClockWidgetStyle.Custom || style is ClockWidgetStyle.Empty) {
         Clock(style, compact, darkColors)
         return
     }
     // The user-chosen size belongs to the default layout. In compact mode the clock sits beside
-    // the date, so it ignores it and is only ever scaled down to fit CompactClockMaxHeight.
+    // the date and takes the date block's size ([compactBox]); until that is known it is only
+    // scaled down to fit CompactClockMaxHeight.
     ClockBoxLayout(
-        width = if (compact) null else width?.dp,
-        height = if (compact) null else height?.dp,
-        maxHeight = if (compact) CompactClockMaxHeight else null,
+        width = if (compact) compactBox?.width else width?.dp,
+        height = if (compact) compactBox?.height else height?.dp,
+        maxHeight = if (compact && compactBox == null) CompactClockMaxHeight else null,
         stretch = style.isStretchable,
         modifier = modifier,
         clock = { Clock(style, compact, darkColors) },

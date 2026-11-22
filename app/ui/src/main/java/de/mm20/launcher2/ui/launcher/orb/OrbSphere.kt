@@ -48,6 +48,7 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.min
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.sin
 import kotlin.random.Random
@@ -368,27 +369,49 @@ fun OrbSphere(
     )
     val levels = remember { FloatArray(OrbAudio.BANDS) }
     val frameTick = remember { mutableLongStateOf(0L) }
+    val targets = remember { FloatArray(OrbAudio.BANDS) }
+    val blurred = remember { FloatArray(OrbAudio.BANDS) }
     LaunchedEffect(playing, audio) {
         var start = 0L
+        var last = 0L
         while (true) {
             val now = withFrameNanos { it }
             if (start == 0L) start = now
+            val dt = if (last == 0L) 1f / 60f else ((now - last) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
+            last = now
             val t = (now - start) / 1_000_000_000f
             val live = playing && audio?.live == true
-            var any = false
-            for (i in levels.indices) {
-                val target = when {
+            for (i in targets.indices) {
+                targets[i] = when {
                     !playing -> 0f
                     live -> audio!!.levels[i]
                     else -> {
-                        // No spectrum: a groove whose bass rides the thump and whose highs shimmer.
-                        val low = 1f - i / levels.size.toFloat()
+                        // No spectrum: a groove whose bass rides the thump and a slow wave rolls
+                        // around the ring.
+                        val low = 1f - i / targets.size.toFloat()
                         0.12f + 0.55f * thump * low * low +
-                            0.22f * (0.5f + 0.5f * sin(t * (2.1f + i * 0.37f) + i * 1.7f))
+                            0.22f * (0.5f + 0.5f * sin(t * 2.4f - i * 0.45f))
                     }
                 }
+            }
+            // Neighbouring bands pull towards each other, so the edge moves as one smooth wave
+            // instead of every column jittering on its own.
+            repeat(2) {
+                for (i in targets.indices) {
+                    val l = targets[(i - 1).coerceAtLeast(0)]
+                    val r = targets[(i + 1).coerceAtMost(targets.size - 1)]
+                    blurred[i] = 0.25f * l + 0.5f * targets[i] + 0.25f * r
+                }
+                blurred.copyInto(targets)
+            }
+            // Frame-rate independent easing: rise briskly, fall gently.
+            val rise = 1f - exp(-dt * 16f)
+            val fall = 1f - exp(-dt * 5f)
+            var any = false
+            for (i in levels.indices) {
+                val target = targets[i]
                 val cur = levels[i]
-                levels[i] = cur + (target - cur) * if (target > cur) 0.7f else 0.2f
+                levels[i] = cur + (target - cur) * if (target > cur) rise else fall
                 if (levels[i] > 0.002f) any = true
             }
             frameTick.longValue = now
@@ -792,9 +815,8 @@ private fun blinkSpec(leadMs: Int): KeyframesSpec<Float> = keyframes {
 /**
  * Draws the music visualizer: [DotColumns] columns of dots standing on the body outline, each
  * lit outward as far as its spectrum band reaches (bass at the bottom, highs at the top,
- * mirrored left and right). Columns range from [MinDotsPerColumn] dots when quiet to
- * [DotsPerColumn] dots when loud, a full column reaching [MaxColumnReach] times the radius out
- * from the body. The tip dot fades in and out so the columns grow smoothly. Odd columns sit half a step out
+ * mirrored left and right). The innermost dot always glows faintly so the ring reads at rest;
+ * the tip dot fades in and out so the columns grow smoothly. Odd columns sit half a step out
  * for a sparkling, staggered look. Allocation-free.
  */
 private fun DrawScope.drawDotRing(
@@ -811,8 +833,8 @@ private fun DrawScope.drawDotRing(
     if (len <= 0f) return
     val last = levels.size - 1
     val gap = r * 0.1f
-    val step = (r * MaxColumnReach - gap) / (DotsPerColumn - 1)
-    val dot = r * 0.03f
+    val step = r * 0.068f
+    val dot = r * 0.024f
     for (i in 0 until DotColumns) {
         val d = len * i / DotColumns
         val p = measure.getPosition(d)
@@ -832,15 +854,14 @@ private fun DrawScope.drawDotRing(
         val hi = (lo + 1).coerceAtMost(last)
         val a = levels[last - lo]
         val b = levels[last - hi]
-        val level = a + (b - a) * (f - lo)
-        val lit = MinDotsPerColumn + level * (DotsPerColumn - MinDotsPerColumn)
+        val x = f - lo
+        val level = a + (b - a) * x * x * (3f - 2f * x)
+        val lit = level * DotsPerColumn
         val stagger = if (i % 2 == 1) step * 0.5f else 0f
         // Loud columns also swell their dots, so peaks read as bursts rather than lines.
         val swell = 0.8f + 0.5f * level
         for (k in 0 until DotsPerColumn) {
-            // The base dots always show, faint at rest and brighter as the band gets louder.
-            val on = if (k < MinDotsPerColumn) 0.35f + 0.65f * (level * 3f).coerceAtMost(1f)
-            else (lit - k).coerceIn(0f, 1f)
+            val on = if (k == 0) maxOf(0.3f, lit.coerceAtMost(1f)) else (lit - k).coerceIn(0f, 1f)
             if (on <= 0.01f) break
             val off = gap + stagger + k * step
             drawCircle(
@@ -855,10 +876,6 @@ private fun DrawScope.drawDotRing(
 
 private const val DotColumns = 84
 private const val DotsPerColumn = 10
-private const val MinDotsPerColumn = 2
-
-/** How far a full column reaches out from the body, in body radii. */
-private const val MaxColumnReach = 1.5f
 
 /** One saccade step of the 6s slow clock. */
 private val SaccadeStep = (PI / 6).toFloat()

@@ -74,7 +74,7 @@ fun DigitalClock1(
     val formattedString = format.format(time)
 
     val textStyle = MaterialTheme.typography.displayLarge.copy(
-        fontSize = if (verticalLayout) 100.sp else 48.sp,
+        fontSize = if (verticalLayout) 100.sp else 40.sp,
         fontWeight = FontWeight.Black,
         fontFeatureSettings = if (monospaced) "tnum" else null,
         textAlign = TextAlign.Center,

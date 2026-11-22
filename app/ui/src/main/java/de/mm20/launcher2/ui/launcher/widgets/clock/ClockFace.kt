@@ -73,14 +73,20 @@ fun ClockFace(
         Clock(style, compact, darkColors)
         return
     }
+    // The user-chosen size belongs to the default layout. In compact mode the clock sits beside
+    // the date, so it ignores it and is only ever scaled down to fit CompactClockMaxHeight.
     ClockBoxLayout(
-        width = width?.dp,
-        height = height?.dp,
+        width = if (compact) null else width?.dp,
+        height = if (compact) null else height?.dp,
+        maxHeight = if (compact) CompactClockMaxHeight else null,
         stretch = style.isStretchable,
         modifier = modifier,
         clock = { Clock(style, compact, darkColors) },
     )
 }
+
+/** Maximum height of any clock face in the compact (date left, time right) layout. */
+private val CompactClockMaxHeight = 64.dp
 
 /** Digit-based faces look right stretched; round faces would distort. */
 private val ClockWidgetStyle.isStretchable: Boolean
@@ -106,6 +112,7 @@ private fun ClockBoxLayout(
     height: Dp?,
     stretch: Boolean,
     modifier: Modifier = Modifier,
+    maxHeight: Dp? = null,
     clock: @Composable () -> Unit,
 ) {
     Layout(content = clock, modifier = modifier) { measurables, constraints ->
@@ -121,7 +128,12 @@ private fun ClockBoxLayout(
         val boxW: Int
         val boxH: Int
         if (targetW == null && targetH == null) {
-            val s = min(1f, avail.toFloat() / cW)
+            var s = min(1f, avail.toFloat() / cW)
+            if (maxHeight != null) {
+                s = min(s, maxHeight.roundToPx().toFloat() / cH)
+                // Leave room for the date next to the clock.
+                if (constraints.hasBoundedWidth) s = min(s, constraints.maxWidth * 0.6f / cW)
+            }
             boxW = (cW * s).roundToInt()
             boxH = (cH * s).roundToInt()
         } else {

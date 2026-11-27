@@ -54,6 +54,7 @@ data class Notification(
         isClearable = notification.isClearable,
         smallIcon = notification.smallIcon,
         extras = notification.extras,
+        flags = notification.flags,
         contentIntent = notification.contentIntent
     )
 

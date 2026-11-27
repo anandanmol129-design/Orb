@@ -2,6 +2,8 @@ package de.mm20.launcher2.notifications
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 
 class NotificationRepository {
@@ -11,18 +13,33 @@ class NotificationRepository {
 
     val notifications: Flow<List<Notification>> = _notifications
 
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> = _isConnected
+
+    internal fun setConnected(connected: Boolean) {
+        _isConnected.value = connected
+    }
+
     internal fun setNotifications(notifications: List<Notification>) {
         _notifications.value = notifications
+    }
+
+    internal fun updateNotifications(transform: (List<Notification>) -> List<Notification>) {
+        _notifications.update(transform)
     }
 
     internal fun getNotifications(): List<Notification> = _notifications.value
 
     internal fun onNotificationPosted(notification: Notification) {
-        _notifications.value = _notifications.value.filter { it.key != notification.key } + notification
+        _notifications.update { current ->
+            current.filter { it.key != notification.key } + notification
+        }
     }
 
     internal fun onNotificationRemoved(key: String) {
-        _notifications.value = _notifications.value.filter { it.key != key }
+        _notifications.update { current ->
+            current.filter { it.key != key }
+        }
     }
 
     fun cancelNotification(notification: Notification) {

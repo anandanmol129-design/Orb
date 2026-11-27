@@ -30,6 +30,7 @@ class NotificationService : NotificationListenerService() {
         Log.d("MM20", "Notification listener connected")
         permissionsManager.reportNotificationListenerState(true)
         instance = WeakReference(this)
+        notificationRepository.setConnected(true)
 
         scope.launch {
             val statusBarNotifications = getNotifications().sortedBy { it.postTime }
@@ -48,15 +49,13 @@ class NotificationService : NotificationListenerService() {
     override fun onNotificationRankingUpdate(rankingMap: RankingMap?) {
         super.onNotificationRankingUpdate(rankingMap)
         scope.launch {
-            val notifications = notificationRepository.getNotifications()
-
-            val ranking = Ranking()
-            val updatedNotifications = notifications.map {
-                rankingMap?.getRanking(it.key, ranking)
-                Notification(it, ranking)
+            notificationRepository.updateNotifications { notifications ->
+                val ranking = Ranking()
+                notifications.map {
+                    rankingMap?.getRanking(it.key, ranking)
+                    Notification(it, ranking)
+                }
             }
-
-            notificationRepository.setNotifications(updatedNotifications)
         }
     }
 
@@ -86,6 +85,7 @@ class NotificationService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         permissionsManager.reportNotificationListenerState(false)
+        notificationRepository.setConnected(false)
         notificationRepository.setNotifications(emptyList())
         Log.d("MM20", "Notification listener disconnected")
     }

@@ -6,14 +6,18 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.AudioManager
 import android.media.audiofx.Visualizer
+import android.os.SystemClock
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -24,7 +28,7 @@ import de.mm20.launcher2.music.MusicService
 import de.mm20.launcher2.music.PlaybackState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 import kotlin.math.hypot
@@ -61,83 +65,265 @@ data class OrbMedia(
     val art: ImageBitmap? = null,
     /** A vivid colour picked from [art], for outlines, glow and the control ring. */
     val accent: Color? = null,
+    /** Stable identifier for the active track so cover art races track real switches. */
+    val trackKey: Any? = null,
 )
+
+internal data class ProcessedSession(
+    val sessionToken: Any,
+    val packageName: String,
+    val playbackState: PlaybackState,
+    val isTransitioning: Boolean,
+    val title: String?,
+    val artist: String?,
+    val art: ImageBitmap?,
+    val accent: Color?,
+    val trackKey: Any?,
+)
+
+internal enum class SessionArtDecision {
+    ShowNow,
+    GraceBuffering,
+    GracePause,
+    HideNow,
+}
+
+/**
+ * Decides whether the orb should immediately show, briefly keep during a transient gap, or hide
+ * cover art for [session]. Cover art only ever appears for an actively playing session (or
+ * while that same playing session briefly buffers or pauses).
+ */
+internal fun decideSessionPlayback(
+    session: ProcessedSession?,
+    wasShowingSession: Boolean,
+    lastPlayingToken: Any?,
+): SessionArtDecision {
+    if (session == null) return SessionArtDecision.HideNow
+    if (session.playbackState == PlaybackState.Playing) return SessionArtDecision.ShowNow
+    val samePlayingSession = wasShowingSession && lastPlayingToken == session.sessionToken
+    if (!samePlayingSession) return SessionArtDecision.HideNow
+    return when {
+        session.isTransitioning -> SessionArtDecision.GraceBuffering
+        session.playbackState == PlaybackState.Paused -> SessionArtDecision.GracePause
+        else -> SessionArtDecision.HideNow
+    }
+}
+
+/**
+ * Combines the resolved [session] with [sessionPlaying] and [audioFallbackPlaying].
+ * Cover art, accent, and [OrbMedia.trackKey] are strictly tied to [sessionPlaying], so a paused
+ * session never leaks its artwork while another app plays audio or while nothing is playing.
+ */
+internal fun buildOrbMedia(
+    session: ProcessedSession?,
+    sessionPlaying: Boolean,
+    audioFallbackPlaying: Boolean,
+): OrbMedia {
+    val showSessionArt = sessionPlaying && session != null
+    val hasSession = session != null &&
+        (session.playbackState != PlaybackState.Stopped || session.isTransitioning)
+    return OrbMedia(
+        hasSession = hasSession,
+        playing = sessionPlaying || audioFallbackPlaying,
+        title = session?.title,
+        artist = session?.artist,
+        art = if (showSessionArt) session.art else null,
+        accent = if (showSessionArt) session.accent else null,
+        trackKey = if (showSessionArt) session.trackKey else null,
+    )
+}
 
 /**
  * The current media session from [MusicService] (needs notification access), with the cover
  * art's accent colour extracted off the main thread. Falls back to "something is playing" from
- * the audio manager when no session is visible.
+ * the audio manager for the visualizer groove when no session is visible, without showing stale
+ * artwork from a paused session.
  */
 @Composable
-fun rememberOrbMedia(): State<OrbMedia> {
+fun rememberOrbMedia(hasMediaAccess: Boolean = true): State<OrbMedia> {
     val musicService: MusicService = koinInject()
     val musicActive = rememberMusicPlaying()
-    val art = produceState<Pair<ImageBitmap, Color?>?>(null, musicService) {
-        var last: Bitmap? = null
-        musicService.albumArt.collect { bmp ->
-            if (bmp == null) {
-                // Track changes briefly report no art; don't flash back to the plain body.
-                delay(600)
-                last = null
+    val currentHasMediaAccess = rememberUpdatedState(hasMediaAccess)
+
+    val liveSession = produceState<ProcessedSession?>(null, musicService) {
+        var cachedToken: Any? = null
+        var cachedRawBitmap: Bitmap? = null
+        var cachedProcessedArt: Pair<ImageBitmap, Color?>? = null
+        musicService.activeSession.collectLatest { session ->
+            if (session == null) {
+                cachedToken = null
+                cachedRawBitmap = null
+                cachedProcessedArt = null
                 value = null
-                return@collect
+                return@collectLatest
             }
-            if (last != null && last!!.sameAs(bmp)) return@collect
-            last = bmp
-            value = withContext(Dispatchers.Default) {
-                val soft = if (bmp.config == Bitmap.Config.HARDWARE) {
-                    bmp.copy(Bitmap.Config.ARGB_8888, false)
-                } else bmp
-                // A player's stand-in artwork (a generic note icon) is no cover: keep the face.
-                if (isPlaceholderArt(soft)) return@withContext null
-                val accent = runCatching {
-                    val p = Palette.from(soft).maximumColorCount(16).generate()
-                    val swatch = p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.dominantSwatch
-                    swatch?.rgb?.let { Color(it) }
-                }.getOrNull()
-                soft.asImageBitmap() to accent
+            if (session.sessionToken != cachedToken) {
+                cachedToken = session.sessionToken
+                cachedRawBitmap = null
+                cachedProcessedArt = null
+            }
+            val bmp = session.albumArt
+            val processed = when {
+                bmp == null -> {
+                    cachedRawBitmap = null
+                    cachedProcessedArt = null
+                    null
+                }
+                bmp === cachedRawBitmap || (
+                    cachedRawBitmap != null &&
+                        !cachedRawBitmap!!.isRecycled &&
+                        !bmp.isRecycled &&
+                        runCatching { cachedRawBitmap!!.sameAs(bmp) }.getOrDefault(false)
+                    ) -> {
+                    cachedProcessedArt
+                }
+                else -> {
+                    val extracted = withContext(Dispatchers.Default) {
+                        val soft = if (bmp.config == Bitmap.Config.HARDWARE) {
+                            bmp.copy(Bitmap.Config.ARGB_8888, false)
+                        } else {
+                            bmp
+                        }
+                        // A player's stand-in artwork (a generic note icon) is no cover: keep the face.
+                        if (soft == null || isPlaceholderArt(soft)) {
+                            null
+                        } else {
+                            val accent = runCatching {
+                                val p = Palette.from(soft).maximumColorCount(16).generate()
+                                val swatch = p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.dominantSwatch
+                                swatch?.rgb?.let { Color(it) }
+                            }.getOrNull()
+                            soft.asImageBitmap() to accent
+                        }
+                    }
+                    cachedRawBitmap = bmp
+                    cachedProcessedArt = extracted
+                    extracted
+                }
+            }
+            val trackKey = session.title?.let { Triple(session.sessionToken, it, session.artist) }
+                ?: session.sessionToken
+            value = ProcessedSession(
+                sessionToken = session.sessionToken,
+                packageName = session.packageName,
+                playbackState = session.playbackState,
+                isTransitioning = session.isTransitioning,
+                title = session.title,
+                artist = session.artist,
+                art = processed?.first,
+                accent = processed?.second,
+                trackKey = trackKey,
+            )
+        }
+    }
+
+    var sessionPlaying by remember { mutableStateOf(false) }
+    var lastPlayingToken by remember { mutableStateOf<Any?>(null) }
+    val s = liveSession.value
+    LaunchedEffect(s?.sessionToken, s?.playbackState, s?.isTransitioning) {
+        when (decideSessionPlayback(s, sessionPlaying, lastPlayingToken)) {
+            SessionArtDecision.ShowNow -> {
+                lastPlayingToken = s!!.sessionToken
+                sessionPlaying = true
+            }
+            SessionArtDecision.GraceBuffering -> {
+                delay(BUFFERING_GRACE_MS)
+                sessionPlaying = false
+                lastPlayingToken = null
+            }
+            SessionArtDecision.GracePause -> {
+                delay(PAUSE_GRACE_MS)
+                sessionPlaying = false
+                lastPlayingToken = null
+            }
+            SessionArtDecision.HideNow -> {
+                sessionPlaying = false
+                lastPlayingToken = null
             }
         }
     }
-    val session = produceState(OrbMedia(), musicService) {
-        combine(
-            musicService.playbackState,
-            musicService.title,
-            musicService.artist,
-        ) { state, title, artist ->
-            OrbMedia(
-                hasSession = state != PlaybackState.Stopped,
-                playing = state == PlaybackState.Playing,
-                title = title,
-                artist = artist,
-            )
-        }.collect { value = it }
+
+    // Suppress Android AudioFlinger's 1-3 s standby tail after a session stops playing so pausing
+    // doesn't keep the visualizer moving on stale audio output.
+    var awaitingAudioIdle by remember { mutableStateOf(false) }
+    val wasSessionPlaying = remember { booleanArrayOf(false) }
+    LaunchedEffect(sessionPlaying) {
+        val hadPlaying = wasSessionPlaying[0]
+        wasSessionPlaying[0] = sessionPlaying
+        if (sessionPlaying) {
+            awaitingAudioIdle = false
+        } else if (hadPlaying) {
+            awaitingAudioIdle = true
+            delay(AUDIO_STANDBY_TAIL_MS)
+            awaitingAudioIdle = false
+        }
     }
-    val playing = session.value.playing || musicActive.value
-    // Art shows only while something plays. Losing it waits a moment, so a track change or a
-    // brief buffering pause doesn't flash the plain body.
-    val showArt by produceState(playing, playing) {
-        if (!playing) delay(ART_HIDE_DELAY_MS)
-        value = playing
+    LaunchedEffect(musicActive.value) {
+        if (!musicActive.value) {
+            awaitingAudioIdle = false
+        }
     }
+
     return remember {
         derivedStateOf {
-            val s = session.value
-            val a = art.value
-            val visible = s.hasSession && showArt
-            s.copy(
-                playing = s.playing || musicActive.value,
-                art = if (visible) a?.first else null,
-                accent = if (visible) a?.second else null,
+            val audioFallbackPlaying =
+                musicActive.value && (!currentHasMediaAccess.value || !awaitingAudioIdle)
+            buildOrbMedia(
+                session = liveSession.value,
+                sessionPlaying = sessionPlaying,
+                audioFallbackPlaying = audioFallbackPlaying,
             )
         }
     }
 }
 
+internal enum class VisualizerHealth {
+    Healthy,
+    StaleCallbacks,
+    SustainedSilence,
+}
+
+/**
+ * True while the system [Visualizer] is marked live and has delivered non-silent FFT data within
+ * the freshness window. Lets the orb fall back smoothly to its synthetic groove whenever Android
+ * stalls callbacks or routes playback through hardware audio offload.
+ */
+internal fun isAudioSignalLive(
+    live: Boolean,
+    lastFrameAtMs: Long,
+    lastSignalAtMs: Long,
+    nowMs: Long,
+): Boolean {
+    if (!live || lastFrameAtMs <= 0L || lastSignalAtMs <= 0L) return false
+    if (nowMs - lastFrameAtMs > VISUALIZER_FRAME_STALE_MS) return false
+    if (nowMs - lastSignalAtMs > VISUALIZER_SILENCE_FALLBACK_MS) return false
+    return true
+}
+
+/**
+ * Classifies whether a bound [Visualizer] has stopped delivering callbacks or has been reporting
+ * sustained silence long enough to warrant re-attaching it.
+ */
+internal fun evaluateVisualizerHealth(
+    attachedAtMs: Long,
+    lastFrameAtMs: Long,
+    lastSignalAtMs: Long,
+    nowMs: Long,
+    staleRebindMs: Long,
+    silentRebindMs: Long,
+): VisualizerHealth {
+    val frameRef = max(attachedAtMs, lastFrameAtMs)
+    if (nowMs - frameRef >= staleRebindMs) return VisualizerHealth.StaleCallbacks
+    val signalRef = max(attachedAtMs, lastSignalAtMs)
+    if (nowMs - signalRef >= silentRebindMs) return VisualizerHealth.SustainedSilence
+    return VisualizerHealth.Healthy
+}
+
 /**
  * Live spectrum of whatever the device is playing, from the global output mix
  * ([Visualizer] on session 0). Needs RECORD_AUDIO, which the voice assistant already asks for;
- * without it [live] stays false and the orb falls back to its synthetic groove.
+ * without it (or when callbacks stall / report silence) [isLive] stays false and the orb falls
+ * back to its synthetic groove.
  *
  * [levels] holds [BANDS] values in 0..1, low frequencies first, written from the visualizer's
  * thread and read once per frame while drawing.
@@ -149,6 +335,12 @@ class OrbAudio {
     var live = false
         internal set
 
+    @Volatile
+    internal var lastFrameAtMs: Long = 0L
+
+    @Volatile
+    internal var lastSignalAtMs: Long = 0L
+
     // One running peak shared by all bands (auto gain that keeps the spectrum's shape), and a
     // short per-band average to detect hits.
     private var peak = 0.3f
@@ -156,8 +348,12 @@ class OrbAudio {
     private val mags = FloatArray(BANDS)
     private var edges: IntArray? = null
 
-    internal fun onFft(fft: ByteArray) {
+    fun isLive(nowMs: Long = SystemClock.elapsedRealtime()): Boolean =
+        isAudioSignalLive(live, lastFrameAtMs, lastSignalAtMs, nowMs)
+
+    internal fun onFft(fft: ByteArray, nowMs: Long = SystemClock.elapsedRealtime()) {
         val bins = fft.size / 2
+        if (bins < 2) return
         val e = edges?.takeIf { it.size == BANDS + 1 } ?: bandEdges(bins).also { edges = it }
         var frameMax = 0f
         for (b in 0 until BANDS) {
@@ -187,11 +383,20 @@ class OrbAudio {
             // beat instead of flickering band by band.
             levels[b] = (shape * 0.7f + hit * 2.5f).coerceIn(0f, 1f)
         }
+        lastFrameAtMs = nowMs
+        if (frameMax > SIGNAL_EPSILON) {
+            lastSignalAtMs = nowMs
+        }
+        live = true
     }
 
     internal fun clear() {
         live = false
         levels.fill(0f)
+        peak = 0.3f
+        avg.fill(0f)
+        lastFrameAtMs = 0L
+        lastSignalAtMs = 0L
     }
 
     private fun bandEdges(bins: Int): IntArray {
@@ -209,16 +414,34 @@ class OrbAudio {
     }
 }
 
-/** Runs the system output visualizer while [enabled]; see [OrbAudio]. */
+/**
+ * Runs the system output visualizer while [enabled], with a self-healing watchdog that rebinds
+ * `Visualizer(0)` if Android stalls callbacks or drops output to silence during long playback.
+ */
 @Composable
 fun rememberOrbAudio(enabled: Boolean): OrbAudio {
     val context = LocalContext.current
     val audio = remember { OrbAudio() }
     val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-    DisposableEffect(enabled, granted) {
+        PackageManager.PERMISSION_GRANTED
+    LaunchedEffect(enabled, granted) {
+        if (!enabled || !granted) {
+            audio.clear()
+            return@LaunchedEffect
+        }
         var visualizer: Visualizer? = null
-        if (enabled && granted) {
+
+        fun releaseVisualizer() {
+            runCatching {
+                visualizer?.enabled = false
+                visualizer?.release()
+            }
+            visualizer = null
+        }
+
+        fun attachVisualizer(): Long {
+            releaseVisualizer()
+            audio.live = false
             visualizer = runCatching {
                 Visualizer(0).apply {
                     captureSize = Visualizer.getCaptureSizeRange()[1].coerceAtMost(1024)
@@ -228,7 +451,6 @@ fun rememberOrbAudio(enabled: Boolean): OrbAudio {
                             override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, r: Int) {
                                 if (fft != null) {
                                     audio.onFft(fft)
-                                    audio.live = true
                                 }
                             }
                         },
@@ -239,12 +461,41 @@ fun rememberOrbAudio(enabled: Boolean): OrbAudio {
                     this.enabled = true
                 }
             }.getOrNull()
+            return SystemClock.elapsedRealtime()
         }
-        onDispose {
-            runCatching {
-                visualizer?.enabled = false
-                visualizer?.release()
+
+        var attachedAt = attachVisualizer()
+        var staleBackoffMs = VISUALIZER_REBIND_STALE_BASE_MS
+        var silentBackoffMs = VISUALIZER_REBIND_SILENT_BASE_MS
+        try {
+            while (true) {
+                delay(VISUALIZER_WATCHDOG_POLL_MS)
+                val now = SystemClock.elapsedRealtime()
+                if (audio.isLive(now)) {
+                    staleBackoffMs = VISUALIZER_REBIND_STALE_BASE_MS
+                    silentBackoffMs = VISUALIZER_REBIND_SILENT_BASE_MS
+                    continue
+                }
+                val effectDisabled =
+                    visualizer == null || runCatching { visualizer?.enabled != true }.getOrDefault(true)
+                val health = evaluateVisualizerHealth(
+                    attachedAtMs = attachedAt,
+                    lastFrameAtMs = audio.lastFrameAtMs,
+                    lastSignalAtMs = audio.lastSignalAtMs,
+                    nowMs = now,
+                    staleRebindMs = staleBackoffMs,
+                    silentRebindMs = silentBackoffMs,
+                )
+                if (effectDisabled || health == VisualizerHealth.StaleCallbacks) {
+                    attachedAt = attachVisualizer()
+                    staleBackoffMs = (staleBackoffMs * 2).coerceAtMost(VISUALIZER_REBIND_STALE_MAX_MS)
+                } else if (health == VisualizerHealth.SustainedSilence) {
+                    attachedAt = attachVisualizer()
+                    silentBackoffMs = (silentBackoffMs * 2).coerceAtMost(VISUALIZER_REBIND_SILENT_MAX_MS)
+                }
             }
+        } finally {
+            releaseVisualizer()
             audio.clear()
         }
     }
@@ -252,7 +503,17 @@ fun rememberOrbAudio(enabled: Boolean): OrbAudio {
 }
 
 private const val MUSIC_POLL_MS = 250L
-private const val ART_HIDE_DELAY_MS = 1500L
+private const val BUFFERING_GRACE_MS = 900L
+private const val PAUSE_GRACE_MS = 350L
+private const val AUDIO_STANDBY_TAIL_MS = 3500L
+private const val SIGNAL_EPSILON = 0.005f
+internal const val VISUALIZER_FRAME_STALE_MS = 1500L
+internal const val VISUALIZER_SILENCE_FALLBACK_MS = 3000L
+private const val VISUALIZER_WATCHDOG_POLL_MS = 2000L
+private const val VISUALIZER_REBIND_STALE_BASE_MS = 4000L
+private const val VISUALIZER_REBIND_STALE_MAX_MS = 30_000L
+private const val VISUALIZER_REBIND_SILENT_BASE_MS = 15_000L
+private const val VISUALIZER_REBIND_SILENT_MAX_MS = 60_000L
 
 /**
  * Whether [art] is a player's stand-in rather than real cover art: an icon with a see-through

@@ -159,7 +159,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         val hasMediaAccess by remember {
             permissionsManager.hasPermission(PermissionGroup.Notifications)
         }.collectAsState(initial = true)
-        val media by rememberOrbMedia()
+        val media by rememberOrbMedia(hasMediaAccess = hasMediaAccess)
 
         // Mirror the assistant's state for the wallpaper layer, which sits outside this tree.
         SideEffect {
@@ -253,7 +253,6 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var skipDir by remember { mutableIntStateOf(1) }
         var skipAt by remember { mutableLongStateOf(0L) }
         var mediaPromptDismissed by remember { mutableStateOf(pieRepository.mediaAccessPromptDismissed()) }
-        val audio = rememberOrbAudio(enabled = media.playing && !sleeping)
         val showMediaRing = mediaRingEnabled && media.hasSession &&
             (if (mediaLayout == MediaRingLayout.Arc) mediaArc else mediaSlots.values)
                 .any { it != MediaRingAction.None }
@@ -264,12 +263,14 @@ internal object OrbHomeComponent : ScaffoldComponent() {
         var homeResumed by remember {
             mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         }
+        val audio = rememberOrbAudio(enabled = media.playing && !sleeping && homeResumed)
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_PAUSE) homeResumed = false
                 if (event == Lifecycle.Event.ON_STOP) aodMode = false
                 if (event == Lifecycle.Event.ON_RESUME) {
                     homeResumed = true
+                    musicService.refresh()
                     orbShape = pieRepository.orbShape()
                     orbFill = pieRepository.orbFill()
                     mediaRingEnabled = pieRepository.mediaRingEnabled()
@@ -290,6 +291,13 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             }
             lifecycleOwner.lifecycle.addObserver(observer)
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+        LaunchedEffect(aodMode, homeResumed) {
+            if (!aodMode || !homeResumed) return@LaunchedEffect
+            while (true) {
+                delay(AOD_REFRESH_MS)
+                musicService.refresh()
+            }
         }
 
         val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -611,7 +619,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         fill = orbFill,
                         playing = media.playing,
                         coverArt = if (mediaCoverArt) media.art else null,
-                        trackKey = media.title?.let { it to media.artist },
+                        trackKey = media.trackKey,
                         skipDirection = if (SystemClock.uptimeMillis() - skipAt < SkipMemoryMs) skipDir else 1,
                         accent = media.accent,
                         audio = audio,
@@ -989,7 +997,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                     fill = orbFill,
                     playing = media.playing,
                     coverArt = if (mediaCoverArt) media.art else null,
-                    trackKey = media.title?.let { it to media.artist },
+                    trackKey = media.trackKey,
                     skipDirection = if (SystemClock.uptimeMillis() - skipAt < SkipMemoryMs) skipDir else 1,
                     accent = media.accent,
                     audio = audio,
@@ -1308,3 +1316,4 @@ private fun replaceFolder(
 
 /** How long a skip from Orb's controls decides the direction of the next track flip. */
 private const val SkipMemoryMs = 4000L
+private const val AOD_REFRESH_MS = 5000L

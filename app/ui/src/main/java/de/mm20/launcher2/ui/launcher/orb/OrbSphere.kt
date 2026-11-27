@@ -2,7 +2,6 @@ package de.mm20.launcher2.ui.launcher.orb
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.snap
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.AnimationSpec
@@ -384,25 +383,24 @@ fun OrbSphere(
     val targets = remember { FloatArray(OrbAudio.BANDS) }
     val blurred = remember { FloatArray(OrbAudio.BANDS) }
     LaunchedEffect(playing, audio) {
-        var start = 0L
+        var wavePhase = 0f
         var last = 0L
         while (true) {
             val now = withFrameNanos { it }
-            if (start == 0L) start = now
             val dt = if (last == 0L) 1f / 60f else ((now - last) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
             last = now
-            val t = (now - start) / 1_000_000_000f
-            val live = playing && audio?.live == true
+            wavePhase = (wavePhase + dt * 2.4f) % TwoPi
+            val liveAudio = if (playing && audio?.isLive() == true) audio else null
             for (i in targets.indices) {
                 targets[i] = when {
                     !playing -> 0f
-                    live -> audio!!.levels[i]
+                    liveAudio != null -> liveAudio.levels[i]
                     else -> {
                         // No spectrum: a groove whose bass rides the thump and a slow wave rolls
                         // around the ring.
                         val low = 1f - i / targets.size.toFloat()
                         0.12f + 0.55f * thump * low * low +
-                            0.22f * (0.5f + 0.5f * sin(t * 2.4f - i * 0.45f))
+                            0.22f * (0.5f + 0.5f * sin(wavePhase - i * 0.45f))
                     }
                 }
             }
@@ -438,9 +436,9 @@ fun OrbSphere(
             if (sea[Kick] > 0.01f) any = true
             // Calm music rolls slowly; a storm whips the waves round.
             val speed = 0.6f + 3.4f * storm
-            sea[Phase1] += dt * 1.7f * speed
-            sea[Phase2] += dt * 2.6f * speed
-            sea[Phase3] += dt * 4.1f * speed
+            sea[Phase1] = (sea[Phase1] + dt * 1.7f * speed) % TwoPi
+            sea[Phase2] = (sea[Phase2] + dt * 2.6f * speed) % TwoPi
+            sea[Phase3] = (sea[Phase3] + dt * 4.1f * speed) % TwoPi
             frameTick.longValue = now
             if (!playing && !any) break
         }
@@ -452,6 +450,7 @@ fun OrbSphere(
 
     // Cover art fades in over a filled body; the last art is kept so it can fade back out.
     var shownArt by remember { mutableStateOf<ImageBitmap?>(null) }
+    val artBeforeUpdate = shownArt
     if (coverArt != null && coverArt !== shownArt) shownArt = coverArt
     // Cover art grows out of the centre while the face is sucked into it; when it stops, the
     // face grows back out and pushes the art off the edge. [artIncoming] says which way.
@@ -462,30 +461,45 @@ fun OrbSphere(
     var flipDir by remember { mutableIntStateOf(1) }
     var flipOldArt by remember { mutableStateOf<ImageBitmap?>(null) }
     val lastTrack = remember { arrayOfNulls<Any>(1) }
-    val flipping = flip.value < 1f
-    val artShow by animateFloatAsState(
-        targetValue = if (artIncoming) 1f else 0f,
-        animationSpec = if (flipping) snap() else tween(ArtRevealMs, easing = FastOutSlowInEasing),
-        label = "art",
-    )
+    val artShow = remember { Animatable(if (artIncoming) 1f else 0f) }
+    LaunchedEffect(playing, state == OrbState.Sleep) {
+        if (!playing || state == OrbState.Sleep) {
+            lastTrack[0] = null
+            flip.snapTo(1f)
+            flipOldArt = null
+        }
+    }
     LaunchedEffect(trackKey) {
         val old = lastTrack[0]
         lastTrack[0] = trackKey
         if (old != null && trackKey != null && old != trackKey && playing && state != OrbState.Sleep) {
             // What the orb shows right now is the side the cars race over.
-            flipOldArt = if (artShow > 0.5f) shownArt else null
+            flipOldArt = if (artShow.value > 0.5f) artBeforeUpdate else null
+            artShow.snapTo(if (artIncoming) 1f else 0f)
+            if (!artIncoming) shownArt = null
             flipDir = if (skipDirection < 0) -1 else 1
             flip.snapTo(0f)
             flip.animateTo(1f, tween(RaceMs, easing = LinearEasing))
+            flipOldArt = null
         } else {
             // A race cut short (paused, stopped, or the track changed again) must not leave
             // the orb stuck half way, still showing the old side.
             flip.snapTo(1f)
+            flipOldArt = null
         }
+    }
+    LaunchedEffect(artIncoming) {
+        val target = if (artIncoming) 1f else 0f
+        if (flip.value < 1f) {
+            artShow.snapTo(target)
+        } else {
+            artShow.animateTo(target, tween(ArtRevealMs, easing = FastOutSlowInEasing))
+        }
+        if (!artIncoming) shownArt = null
     }
     // The art hitting the orb's edge knocks the visualizer dots outward.
     LaunchedEffect(artIncoming) {
-        if (artIncoming && !flipping) {
+        if (artIncoming && flip.value >= 1f) {
             delay(ArtHitsEdgeMs)
             if (playing) sea[Kick] = 1f
         }
@@ -509,7 +523,7 @@ fun OrbSphere(
         // While music plays the body settles down so the dot ring carries all the motion.
         val still = 1f - 0.85f * groove
         val waveAmt = if (isSleep) 0f else vis
-        val ink = lerp(baseInk, Color.White, artShow)
+        val ink = lerp(baseInk, Color.White, artShow.value)
 
         // Breathing and the success pop scale the whole body. A sleeping orb stays at rest.
         val breathe = 1f + 0.04f * sin(breath) * still
@@ -826,7 +840,7 @@ fun OrbSphere(
                                         topLeft = Offset(ec.x - er, ec.y - er * open),
                                         size = Size(er * 2f, er * 2f * open),
                                     )
-                                    if (fill != OrbFill.Outline && artShow < 0.5f && open > 0.55f) {
+                                    if (fill != OrbFill.Outline && artShow.value < 0.5f && open > 0.55f) {
                                         // Catch-light, offset up-left and along the gaze.
                                         drawCircle(
                                             color = Color.White,
@@ -915,7 +929,10 @@ fun OrbSphere(
                     clipPath(raceSwept, ClipOp.Difference) {
                         drawSide(flipOldArt, if (flipOldArt != null) 1f else 0f)
                     }
-                    clipPath(raceSwept) { drawSide(shownArt, artShow) }
+                    clipPath(raceSwept) {
+                        val newArt = if (!isSleep) coverArt else null
+                        drawSide(newArt, if (newArt != null) 1f else 0f)
+                    }
                     // The cars: a bright streak leading each lane.
                     clipPath(bodyPath) {
                         for (lane in 0 until RaceLanes) {
@@ -941,7 +958,7 @@ fun OrbSphere(
                         }
                     }
                 } else {
-                    drawSide(shownArt, artShow)
+                    drawSide(shownArt, artShow.value)
                 }
             }
         }
@@ -1120,6 +1137,7 @@ private const val ActYawn = 4
 private const val ActCount = 5
 private val ActDurations = intArrayOf(0, 700, 900, 1500, 2200)
 private val Signs = floatArrayOf(-1f, 1f)
+private val TwoPi = (2.0 * PI).toFloat()
 private val ShadowColors = listOf(Color.Black.copy(alpha = 0.16f), Color.Transparent)
 private val ArtScrim = listOf(Color.Black.copy(alpha = 0.32f), Color.Black.copy(alpha = 0.08f))
 private val BodyColors = listOf(Color.White, Color(0xFFF5F5F8), Color(0xFFE4E5EB))

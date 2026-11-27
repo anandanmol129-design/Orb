@@ -904,6 +904,7 @@ private fun shortName(a: MediaRingAction, rewindSeconds: Int, forwardSeconds: In
     MediaRingAction.Next -> "Next"
     MediaRingAction.Rewind -> "−${rewindSeconds}s"
     MediaRingAction.Forward -> "+${forwardSeconds}s"
+    MediaRingAction.Aod -> "AOD"
 }
 
 @Composable

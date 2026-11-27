@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import de.mm20.launcher2.applications.AppRepository
 import de.mm20.launcher2.appshortcuts.AppShortcutRepository
+import de.mm20.launcher2.orb.MediaRingAction
 import de.mm20.launcher2.orb.pie.PieActionType
 import de.mm20.launcher2.preferences.WidgetScreenTarget
 import de.mm20.launcher2.search.AppShortcut
@@ -69,6 +70,8 @@ internal fun OrbAddItemSheet(
     onPickAction: (PieActionType) -> Unit,
     onPickWidgets: (WidgetScreenTarget) -> Unit,
     onPickFolder: () -> Unit,
+    availableMediaActions: List<MediaRingAction> = emptyList(),
+    onPickMediaAction: ((MediaRingAction) -> Unit)? = null,
 ) {
     var tab by remember { mutableStateOf(AddTab.Apps) }
     var query by remember { mutableStateOf("") }
@@ -132,6 +135,8 @@ internal fun OrbAddItemSheet(
                         onPick = onPickAction,
                         onPickWidgets = onPickWidgets,
                         onPickFolder = onPickFolder,
+                        availableMediaActions = availableMediaActions,
+                        onPickMediaAction = onPickMediaAction,
                     )
                 }
             }
@@ -363,6 +368,8 @@ private fun ActionList(
     onPick: (PieActionType) -> Unit,
     onPickWidgets: (WidgetScreenTarget) -> Unit,
     onPickFolder: () -> Unit,
+    availableMediaActions: List<MediaRingAction> = emptyList(),
+    onPickMediaAction: ((MediaRingAction) -> Unit)? = null,
 ) {
     val available = PieActionType.entries.filter {
         it != PieActionType.Widgets && it !in existing
@@ -383,6 +390,24 @@ private fun ActionList(
         items(available, key = { it.name }) { type ->
             PickRow(label = type.name, iconRes = type.iconRes()) {
                 onPick(type)
+            }
+        }
+        if (onPickMediaAction != null && availableMediaActions.isNotEmpty()) {
+            item(key = "media-header") {
+                Text(
+                    text = "Media controls",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                )
+            }
+            items(availableMediaActions, key = { "media-${it.name}" }) { action ->
+                PickRow(
+                    label = action.label,
+                    iconRes = action.iconRes(playing = false),
+                ) {
+                    onPickMediaAction(action)
+                }
             }
         }
     }

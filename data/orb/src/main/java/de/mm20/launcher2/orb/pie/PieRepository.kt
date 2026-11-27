@@ -245,6 +245,24 @@ class PieRepository(
         prefs.edit().putString(KEY_MEDIA_ARC_PREFIX + index, action.name).apply()
     }
 
+    fun saveMediaArc(actions: List<MediaRingAction>) {
+        prefs.edit().apply {
+            repeat(MediaArcSize) { i ->
+                val action = actions.getOrNull(i) ?: MediaRingAction.None
+                putString(KEY_MEDIA_ARC_PREFIX + i, action.name)
+            }
+        }.apply()
+    }
+
+    fun saveMediaRing(slots: Map<MediaRingSlot, MediaRingAction>) {
+        prefs.edit().apply {
+            MediaRingSlot.entries.forEach { slot ->
+                val action = slots[slot] ?: MediaRingAction.None
+                putString(KEY_MEDIA_SLOT_PREFIX + slot.name, action.name)
+            }
+        }.apply()
+    }
+
     fun resetMediaArc() {
         prefs.edit().apply {
             repeat(MediaArcSize) { remove(KEY_MEDIA_ARC_PREFIX + it) }
@@ -289,10 +307,10 @@ class PieRepository(
         private const val KEY_MEDIA_FORWARD = "media_forward_s"
         private const val KEY_MEDIA_PROMPT_DISMISSED = "media_access_prompt_dismissed"
 
-        /** Open player on top, next/previous at the sides, play/pause and skips along the bottom. */
+        /** Open player on top, AOD at top-right, next/previous at the sides, play/pause and skips along the bottom. */
         val defaultMediaRing: Map<MediaRingSlot, MediaRingAction> = mapOf(
             MediaRingSlot.Top to MediaRingAction.OpenApp,
-            MediaRingSlot.TopRight to MediaRingAction.None,
+            MediaRingSlot.TopRight to MediaRingAction.Aod,
             MediaRingSlot.Right to MediaRingAction.Next,
             MediaRingSlot.BottomRight to MediaRingAction.Forward,
             MediaRingSlot.Bottom to MediaRingAction.PlayPause,
@@ -309,6 +327,7 @@ class PieRepository(
             MediaRingAction.OpenApp,
             MediaRingAction.Next,
             MediaRingAction.Forward,
+            MediaRingAction.Aod,
         )
 
         fun defaults(): List<PieItem> = listOf(

@@ -12,6 +12,7 @@ enum class MediaRingAction(val label: String) {
     Next("Next"),
     Rewind("Skip back"),
     Forward("Skip forward"),
+    Aod("AOD"),
 }
 
 /**
@@ -38,7 +39,7 @@ enum class MediaRingLayout(val label: String) {
 }
 
 /** How many positions the arc layout has. */
-const val MediaArcSize = 6
+const val MediaArcSize = 7
 
 /** Skip durations offered for the skip back / skip forward controls, in seconds. */
 val MediaSkipOptions = listOf(5, 10, 15, 30, 60)

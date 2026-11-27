@@ -1019,6 +1019,7 @@ internal class LauncherScaffoldState(
         private set
     var isSearchBarHidden by mutableStateOf(initialIsSearchBarHidden)
         private set
+    var hideSystemBarsOverride by mutableStateOf(false)
 
     /**
      * Lock the scaffold to the current page, disable all gestures and animations.
@@ -1226,17 +1227,20 @@ internal fun LauncherScaffold(
             config, activity, view,
             state.darkStatusBarIcons,
             state.darkNavBarIcons,
+            state.hideSystemBarsOverride,
         ) {
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 val insetsController = WindowInsetsControllerCompat(activity.window, view)
-                insetsController.isAppearanceLightStatusBars = state.darkStatusBarIcons
-                insetsController.isAppearanceLightNavigationBars = state.darkNavBarIcons
-                if (config.showStatusBar) {
+                insetsController.isAppearanceLightStatusBars =
+                    if (state.hideSystemBarsOverride) false else state.darkStatusBarIcons
+                insetsController.isAppearanceLightNavigationBars =
+                    if (state.hideSystemBarsOverride) false else state.darkNavBarIcons
+                if (config.showStatusBar && !state.hideSystemBarsOverride) {
                     insetsController.show(WindowInsetsCompat.Type.statusBars())
                 } else {
                     insetsController.hide(WindowInsetsCompat.Type.statusBars())
                 }
-                if (config.showNavBar) {
+                if (config.showNavBar && !state.hideSystemBarsOverride) {
                     insetsController.show(WindowInsetsCompat.Type.navigationBars())
                 } else {
                     insetsController.hide(WindowInsetsCompat.Type.navigationBars())

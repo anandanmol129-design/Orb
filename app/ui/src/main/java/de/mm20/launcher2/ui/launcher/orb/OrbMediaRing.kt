@@ -27,8 +27,10 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import de.mm20.launcher2.orb.MediaArcSize
 import de.mm20.launcher2.orb.MediaRingAction
 import de.mm20.launcher2.orb.MediaRingLayout
 import de.mm20.launcher2.orb.MediaRingSlot
@@ -180,6 +182,83 @@ private fun spreadOnScreen(preferred: List<Float>, fits: (Float) -> Boolean): Li
 }
 
 /**
+ * Computes the on-screen positions for all 8 [MediaRingSlot] entries around [center],
+ * matching [MediaRingLayout.Ring] placement and screen-edge spreading.
+ */
+fun mediaRingAllSlotPositions(
+    center: Offset,
+    pieRadius: Float,
+    radius: Float,
+    itemRadius: Float,
+    bounds: Rect,
+): Map<MediaRingSlot, Offset> {
+    val allSlots = MediaRingSlot.entries.associateWith { MediaRingAction.OpenApp }
+    val geometry = mediaRingGeometry(
+        center = center,
+        pieRadius = pieRadius,
+        radius = radius,
+        itemRadius = itemRadius,
+        bounds = bounds,
+        layout = MediaRingLayout.Ring,
+        ring = allSlots,
+        arc = emptyList(),
+    )
+    return MediaRingSlot.entries.mapIndexed { index, slot ->
+        slot to geometry.position(index)
+    }.toMap()
+}
+
+/**
+ * Moves the active (non-[MediaRingAction.None]) item at [fromActiveIndex] to [toActiveIndex],
+ * then pads trailing slots with [MediaRingAction.None] up to [MediaArcSize].
+ */
+fun reorderMediaArc(
+    arc: List<MediaRingAction>,
+    fromActiveIndex: Int,
+    toActiveIndex: Int,
+): List<MediaRingAction> {
+    val active = arc.filter { it != MediaRingAction.None }.toMutableList()
+    if (fromActiveIndex !in active.indices || toActiveIndex !in active.indices || fromActiveIndex == toActiveIndex) {
+        return List(MediaArcSize) { i -> active.getOrElse(i) { MediaRingAction.None } }
+    }
+    val moved = active.removeAt(fromActiveIndex)
+    active.add(toActiveIndex, moved)
+    return List(MediaArcSize) { i -> active.getOrElse(i) { MediaRingAction.None } }
+}
+
+/**
+ * Removes the active (non-[MediaRingAction.None]) item at [activeIndex],
+ * then pads trailing slots with [MediaRingAction.None] up to [MediaArcSize].
+ */
+fun removeMediaArcAt(
+    arc: List<MediaRingAction>,
+    activeIndex: Int,
+): List<MediaRingAction> {
+    val active = arc.filter { it != MediaRingAction.None }.toMutableList()
+    if (activeIndex in active.indices) {
+        active.removeAt(activeIndex)
+    }
+    return List(MediaArcSize) { i -> active.getOrElse(i) { MediaRingAction.None } }
+}
+
+/**
+ * Swaps the actions assigned to [from] and [to] in a Ring layout map.
+ */
+fun swapMediaRingSlots(
+    slots: Map<MediaRingSlot, MediaRingAction>,
+    from: MediaRingSlot,
+    to: MediaRingSlot,
+): Map<MediaRingSlot, MediaRingAction> {
+    if (from == to) return slots
+    val fromAction = slots[from] ?: MediaRingAction.None
+    val toAction = slots[to] ?: MediaRingAction.None
+    return slots.toMutableMap().apply {
+        put(from, toAction)
+        put(to, fromAction)
+    }
+}
+
+/**
  * The extra ring of media controls shown outside the pie while something is playing. Only
  * slots with an action are drawn; [selected] is the slot under the finger.
  */
@@ -192,6 +271,7 @@ fun MediaRing(
     forwardSeconds: Int,
     accent: Color?,
     modifier: Modifier = Modifier,
+    aodActive: Boolean = false,
 ) {
     val density = LocalDensity.current
     val highlight = accent ?: MaterialTheme.colorScheme.primary
@@ -208,53 +288,86 @@ fun MediaRing(
                 MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f)
             }
             val content = if (isSelected) onHighlight else MaterialTheme.colorScheme.onSurface
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            (p.x - sizePx / 2).roundToInt(),
-                            (p.y - sizePx / 2).roundToInt(),
-                        )
-                    }
-                    .size(sizeDp)
-                    .clip(CircleShape)
-                    .background(container)
-                    .border(1.5.dp, highlight.copy(alpha = if (isSelected) 1f else 0.55f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                when (action) {
-                    MediaRingAction.Rewind, MediaRingAction.Forward -> Text(
-                        text = if (action == MediaRingAction.Rewind) "−${rewindSeconds}s" else "+${forwardSeconds}s",
-                        color = content,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
+            MediaRingBubble(
+                action = action,
+                sizeDp = sizeDp,
+                playing = playing,
+                aodActive = aodActive,
+                rewindSeconds = rewindSeconds,
+                forwardSeconds = forwardSeconds,
+                container = container,
+                content = content,
+                borderColor = highlight.copy(alpha = if (isSelected) 1f else 0.55f),
+                modifier = Modifier.offset {
+                    IntOffset(
+                        (p.x - sizePx / 2).roundToInt(),
+                        (p.y - sizePx / 2).roundToInt(),
                     )
-
-                    else -> Icon(
-                        painter = painterResource(action.iconRes(playing)),
-                        contentDescription = action.label,
-                        tint = content,
-                    )
-                }
-            }
+                },
+            )
         }
     }
 }
 
-private fun MediaRingAction.iconRes(playing: Boolean): Int = when (this) {
+@Composable
+internal fun MediaRingBubble(
+    action: MediaRingAction,
+    sizeDp: Dp,
+    playing: Boolean,
+    aodActive: Boolean,
+    rewindSeconds: Int,
+    forwardSeconds: Int,
+    container: Color,
+    content: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(sizeDp)
+            .clip(CircleShape)
+            .background(container)
+            .border(1.5.dp, borderColor, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (action) {
+            MediaRingAction.Rewind, MediaRingAction.Forward -> Text(
+                text = if (action == MediaRingAction.Rewind) "−${rewindSeconds}s" else "+${forwardSeconds}s",
+                color = content,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+
+            else -> Icon(
+                painter = painterResource(action.iconRes(playing, aodActive)),
+                contentDescription = action.label,
+                tint = content,
+            )
+        }
+    }
+}
+
+internal fun MediaRingAction.iconRes(playing: Boolean, aod: Boolean = false): Int = when (this) {
     MediaRingAction.OpenApp -> R.drawable.open_in_new_24px
     MediaRingAction.PlayPause -> if (playing) R.drawable.pause_24px_filled else R.drawable.play_arrow_24px
     MediaRingAction.Previous -> R.drawable.skip_previous_24px
     MediaRingAction.Next -> R.drawable.skip_next_24px
+    MediaRingAction.Aod -> if (aod) R.drawable.light_mode_24px else R.drawable.dark_mode_24px
     else -> R.drawable.music_note_24px
 }
 
 /** The label shown above the orb while a control is under the finger. */
-fun MediaRingAction.hoverLabel(playing: Boolean, rewindSeconds: Int, forwardSeconds: Int): String =
+fun MediaRingAction.hoverLabel(
+    playing: Boolean,
+    rewindSeconds: Int,
+    forwardSeconds: Int,
+    aod: Boolean = false,
+): String =
     when (this) {
         MediaRingAction.PlayPause -> if (playing) "Pause" else "Play"
         MediaRingAction.Rewind -> "Back ${rewindSeconds}s"
         MediaRingAction.Forward -> "Forward ${forwardSeconds}s"
+        MediaRingAction.Aod -> if (aod) "Exit AOD" else "AOD"
         else -> label
     }
 

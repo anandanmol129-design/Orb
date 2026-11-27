@@ -19,12 +19,15 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,9 +56,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -85,9 +90,12 @@ import de.mm20.launcher2.ui.launcher.scaffold.components.ScaffoldComponent
 import de.mm20.launcher2.ui.settings.SettingsActivity
 import de.mm20.launcher2.ui.launcher.scaffold.components.WidgetsComponent
 import de.mm20.launcher2.ui.launcher.feed.FeedReaderActivity
+import de.mm20.launcher2.ui.base.LocalTime
 import de.mm20.launcher2.ui.launcher.widgets.clock.ClockWidget
 import de.mm20.launcher2.ui.locals.LocalSnackbarHostState
+import de.mm20.launcher2.ui.locals.LocalTimeFormat
 import de.mm20.launcher2.ui.launcher.wallpaper.WallpaperVoice
+import de.mm20.launcher2.ui.utils.isTwentyFourHours
 import de.mm20.launcher2.voice.VoiceController
 import de.mm20.launcher2.voice.VoiceUiState
 import de.mm20.launcher2.voice.VoiceSettings
@@ -99,6 +107,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.UUID
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -190,6 +200,30 @@ internal object OrbHomeComponent : ScaffoldComponent() {
             animationSpec = tween(250),
             label = "aodAlpha",
         )
+        var aodShowTime by remember { mutableStateOf(false) }
+        var aodTimeTrigger by remember { mutableIntStateOf(0) }
+        var aodLastTapUp by remember { mutableLongStateOf(0L) }
+        val aodTimeAlpha by animateFloatAsState(
+            targetValue = if (aodMode && aodShowTime) 1f else 0f,
+            animationSpec = tween(durationMillis = if (aodMode && aodShowTime) 220 else 650),
+            label = "aodTimeAlpha",
+        )
+        LaunchedEffect(aodMode) {
+            if (!aodMode) {
+                aodShowTime = false
+                aodTimeTrigger = 0
+                aodLastTapUp = 0L
+            }
+        }
+        LaunchedEffect(aodTimeTrigger) {
+            if (aodTimeTrigger == 0 || !aodMode) {
+                aodShowTime = false
+                return@LaunchedEffect
+            }
+            aodShowTime = true
+            delay(5000L)
+            aodShowTime = false
+        }
         var editMode by remember { mutableStateOf(false) }
         var showAppPicker by remember { mutableStateOf(false) }
         var draggingIcon by remember { mutableStateOf(false) }
@@ -758,16 +792,46 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                             }
                         }
 
+                        fun handleAodTap(upTime: Long) {
+                            val doubleTapWindow = viewConfiguration.doubleTapTimeoutMillis
+                            if (aodLastTapUp > 0L && upTime - aodLastTapUp <= doubleTapWindow) {
+                                aodLastTapUp = 0L
+                                aodShowTime = false
+                                aodMode = false
+                            } else {
+                                aodLastTapUp = upTime
+                                aodTimeTrigger++
+                            }
+                        }
+
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             pointer = down.position
                             if ((down.position - center).getDistance() > confinedRadius) {
                                 if (currentAodMode.value) {
                                     down.consume()
-                                    val up = waitForUpOrCancellation()
-                                    if (up != null) {
-                                        up.consume()
-                                        aodMode = false
+                                    var movedOut = false
+                                    var upTimeOut = -1L
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!movedOut && (change.position - down.position).getDistance() >
+                                            viewConfiguration.touchSlop
+                                        ) {
+                                            movedOut = true
+                                        }
+                                        change.consume()
+                                        if (!change.pressed) {
+                                            upTimeOut = change.uptimeMillis
+                                            break
+                                        }
+                                    }
+                                    if (!movedOut && upTimeOut >= 0 &&
+                                        upTimeOut - down.uptimeMillis <= viewConfiguration.longPressTimeoutMillis
+                                    ) {
+                                        handleAodTap(upTimeOut)
+                                    } else {
+                                        aodLastTapUp = 0L
                                     }
                                 }
                                 return@awaitEachGesture
@@ -872,6 +936,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 // Dragged out to the media ring.
                                 mediaSlot != null && moved -> {
                                     tapCount = 0
+                                    aodLastTapUp = 0L
                                     performMedia(ringGeometry.actions[mediaSlot])
                                 }
 
@@ -881,7 +946,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                 quick && (index < 0 || !moved) -> {
                                     if (currentAodMode.value) {
                                         tapCount = 0
-                                        aodMode = false
+                                        handleAodTap(upTime)
                                     } else {
                                         pokeCount++
                                         tapCount++
@@ -902,6 +967,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
 
                                 index >= 0 -> {
                                     tapCount = 0
+                                    aodLastTapUp = 0L
                                     handleRelease(index)
                                 }
 
@@ -909,6 +975,7 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                                     // Held without choosing anything: the menu itself was the
                                     // response. Long-press bindings other than the pie still run.
                                     tapCount = 0
+                                    aodLastTapUp = 0L
                                     if (actionFor(Gesture.LongPress) !is GestureAction.OpenPie) {
                                         dispatchTapGesture(Gesture.LongPress)
                                     }
@@ -946,6 +1013,43 @@ internal object OrbHomeComponent : ScaffoldComponent() {
                         }
                     },
                 )
+
+                if (aodTimeAlpha > 0.001f) {
+                    val now = LocalTime.current
+                    val is24h = LocalTimeFormat.current.isTwentyFourHours(context)
+                    val timeText = remember(now, is24h) {
+                        SimpleDateFormat(if (is24h) "HH:mm" else "h:mm", Locale.getDefault()).format(now)
+                    }
+                    val dateText = remember(now) {
+                        SimpleDateFormat("EEE, MMM d", Locale.getDefault()).format(now)
+                    }
+                    val orbNearTop = center.y < height * 0.45f
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .align(if (orbNearTop) Alignment.BottomCenter else Alignment.TopCenter)
+                            .padding(
+                                top = if (orbNearTop) 0.dp else insets.calculateTopPadding() + 56.dp,
+                                bottom = if (orbNearTop) insets.calculateBottomPadding() + 72.dp else 0.dp,
+                            ),
+                    ) {
+                        Text(
+                            text = timeText,
+                            style = MaterialTheme.typography.displayLarge.copy(
+                                fontSize = 64.sp,
+                                fontWeight = FontWeight.Light,
+                                fontFeatureSettings = "tnum",
+                            ),
+                            color = Color.White.copy(alpha = 0.92f * aodTimeAlpha),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = dateText,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White.copy(alpha = 0.55f * aodTimeAlpha),
+                        )
+                    }
+                }
 
                 if (pieOpen) {
                     PieMenu(

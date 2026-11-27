@@ -280,6 +280,47 @@ fun ClockWidget(
 }
 
 /**
+ * Only the home-screen clock face, forced to light content over pure black for AOD mode.
+ * No date, weather, click handler, or dock.
+ */
+@Composable
+fun AodClock(modifier: Modifier = Modifier) {
+    val viewModel: ClockWidgetVM = viewModel()
+    val compact by viewModel.compactLayout.collectAsState()
+    val clockStyle by viewModel.clockStyle.collectAsState()
+    val size by viewModel.size.collectAsState()
+    val time = LocalTime.current
+
+    LaunchedEffect(time) {
+        viewModel.updateTime(time)
+    }
+
+    val effectiveStyle = if (clockStyle is ClockWidgetStyle.Empty) {
+        ClockWidgetStyle.Digital1()
+    } else {
+        clockStyle
+    }
+    val isCompact = if (clockStyle is ClockWidgetStyle.Empty) true else (compact == true)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        CompositionLocalProvider(LocalContentColor provides Color.White) {
+            ClockFace(
+                style = effectiveStyle,
+                compact = isCompact,
+                darkColors = false,
+                width = size.first,
+                height = size.second,
+            )
+        }
+    }
+}
+
+/**
  * @param darkColors: use dark content color / suited for light backgrounds
  */
 @Composable
